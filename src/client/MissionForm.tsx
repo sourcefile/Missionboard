@@ -5,6 +5,8 @@ import { toLocalInput } from "./format";
 
 interface Props {
   task: Task | null;
+  noun: string;
+  currency: string;
   skills: Skill[];
   onSave: (t: TaskInput) => Promise<void>;
   onCancel: () => void;
@@ -13,14 +15,16 @@ interface Props {
 const KINDS: [TaskKind, string, string][] = [
   ["duration", "Timed · duration", "Takes a set amount of time"],
   ["window", "Timed · start/end", "Happens at a fixed time"],
+  ["daily", "Daily", "Comes back every day"],
+  ["weekly", "Weekly", "Comes back every week"],
   ["extra", "Extra", "No hard deadline"],
 ];
 
-export function MissionForm({ task, skills, onSave, onCancel }: Props) {
+export function MissionForm({ task, noun, currency, skills, onSave, onCancel }: Props) {
   const nextHour = useMemo(() => { const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d; }, []);
   const [title, setTitle] = useState(task?.title ?? "");
   const [kind, setKind] = useState<TaskKind>(task?.kind ?? "duration");
-  const [duration, setDuration] = useState(String(task?.durationMin ?? 30));
+  const [duration, setDuration] = useState(task ? (task.durationMin == null ? "" : String(task.durationMin)) : "30");
   const [day, setDay] = useState(task?.day ?? "");
   const [start, setStart] = useState(task?.start ? toLocalInput(new Date(task.start)) : toLocalInput(nextHour));
   const [end, setEnd] = useState(task?.end ? toLocalInput(new Date(task.end)) : toLocalInput(new Date(nextHour.getTime() + 3600e3)));
@@ -33,7 +37,7 @@ export function MissionForm({ task, skills, onSave, onCancel }: Props) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const minutes = kind === "duration" ? Number(duration) || 0 : kind === "window" ? Math.max(0, minutesBetween(start, end) || 0) : 0;
+  const minutes = kind === "duration" || kind === "daily" || kind === "weekly" ? Number(duration) || 0 : kind === "window" ? Math.max(0, minutesBetween(start, end) || 0) : 0;
   const suggested = suggestCredits(kind, minutes);
   const creditValue = credits ?? String(suggested);
 
@@ -44,7 +48,7 @@ export function MissionForm({ task, skills, onSave, onCancel }: Props) {
       title,
       kind,
       credits: Math.round(Number(creditValue)),
-      durationMin: kind === "duration" ? Math.round(Number(duration)) : null,
+      durationMin: kind === "duration" || ((kind === "daily" || kind === "weekly") && duration.trim() !== "") ? Math.round(Number(duration)) : null,
       day: kind === "duration" && day ? day : null,
       start: kind === "window" ? new Date(start).toISOString() : null,
       end: kind === "window" ? new Date(end).toISOString() : null,
@@ -59,10 +63,10 @@ export function MissionForm({ task, skills, onSave, onCancel }: Props) {
 
   return (
     <form className="mform" onSubmit={submit}>
-      <div className="mform-title">{task ? "Edit mission" : "New mission"}</div>
+      <div className="mform-title">{task ? `Edit ${noun}` : `New ${noun}`}</div>
 
       <label className="field">
-        <span className="label">Mission</span>
+        <span className="label">{noun}</span>
         <input id="m-title" autoFocus required maxLength={140} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Finish quarterly report" />
       </label>
 
@@ -87,6 +91,16 @@ export function MissionForm({ task, skills, onSave, onCancel }: Props) {
           </label>
         </div>
       )}
+      {(kind === "daily" || kind === "weekly") && (
+        <div className="row">
+          <label className="field"><span className="label">Duration in minutes (optional)</span>
+            <input id="m-duration" type="number" min={1} value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="No set time" />
+          </label>
+          <p className="hint field-hint">
+            {kind === "daily" ? "Refreshes at midnight once you've completed it." : "Refreshes on the first day of the week once you've completed it."}
+          </p>
+        </div>
+      )}
       {kind === "window" && (
         <div className="row">
           <label className="field"><span className="label">Start</span>
@@ -99,11 +113,11 @@ export function MissionForm({ task, skills, onSave, onCancel }: Props) {
       )}
 
       <div className="row">
-        <label className="field"><span className="label">Credits earned</span>
+        <label className="field"><span className="label">Reward ({currency})</span>
           <input id="m-credits" type="number" min={0} required value={creditValue} onChange={(e) => setCredits(e.target.value)} />
         </label>
         <p className="hint field-hint">
-          Suggested: {suggested} CR{kind !== "extra" ? " (1 per 2 minutes)" : ""}.
+          Suggested: {suggested} {currency}{minutes > 0 ? " (1 per 2 minutes)" : ""}.
           {credits !== null && Number(credits) !== suggested && (
             <> <button type="button" className="link" onClick={() => setCredits(null)}>Use suggestion</button></>
           )}
@@ -126,7 +140,7 @@ export function MissionForm({ task, skills, onSave, onCancel }: Props) {
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="mform-actions">
         <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="btn-primary" disabled={busy}>{task ? "Save changes" : "Add mission"}</button>
+        <button type="submit" className="btn-primary" disabled={busy}>{task ? "Save changes" : `Add ${noun}`}</button>
       </div>
     </form>
   );

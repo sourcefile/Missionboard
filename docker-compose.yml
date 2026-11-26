@@ -4,8 +4,18 @@ services:
     image: mission-board:latest
     ports:
       - "8080:8080"
+    environment:
+      # Daily missions refresh at midnight and weekly ones at the start of the week, in this time zone.
+      TZ: Europe/Amsterdam
+      WEEK_START: monday
     volumes:
+      # The SQLite database lives in /data inside the container.
+      # Default: a Docker-managed named volume (shown in Docker Desktop under Volumes).
       - mission-board-data:/data
+      # Alternative: keep the database in a folder on your computer instead.
+      # Comment out the line above and uncomment one of these:
+      # - ./data:/data                          # folder next to this file
+      # - G:/MissionBoardData:/data             # any folder (Windows path)
     restart: unless-stopped
 
 volumes:

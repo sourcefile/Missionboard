@@ -34,23 +34,22 @@ export function createApp(store: Store, staticDir?: string) {
   app.post("/api/tasks/:id/complete", (req, res) => {
     const t = store.task(idOf(req));
     if (!t) return fail(res, 404, "Mission not found.");
-    if (!t.done) store.setDone(t.id, true);
+    store.complete(t.id); // no-op if already done (this day/week for recurring missions)
     res.json(store.state());
   });
   app.post("/api/tasks/:id/reopen", (req, res) => {
     const t = store.task(idOf(req));
     if (!t) return fail(res, 404, "Mission not found.");
-    if (t.done) {
-      if (store.balance() - t.credits < 0) return fail(res, 409, "You've already spent these credits, so this mission can't be reopened.");
-      store.setDone(t.id, false);
+    const c = store.currentCompletion(t.id);
+    if (c) {
+      if (store.balance() - c.credits < 0) return fail(res, 409, "You've already spent these credits, so this mission can't be reopened.");
+      store.removeCompletion(c.id);
     }
     res.json(store.state());
   });
   app.delete("/api/tasks/:id", (req, res) => {
-    const t = store.task(idOf(req));
-    if (!t) return fail(res, 404, "Mission not found.");
-    if (t.done && store.balance() - t.credits < 0) return fail(res, 409, "You've already spent this mission's credits, so it can't be deleted.");
-    store.deleteTask(t.id);
+    // Credits and XP already earned stay in the log.
+    if (!store.deleteTask(idOf(req))) return fail(res, 404, "Mission not found.");
     res.status(204).end();
   });
 
@@ -63,7 +62,7 @@ export function createApp(store: Store, staticDir?: string) {
   });
   app.delete("/api/skills/:id", (req, res) => {
     const id = idOf(req);
-    if (store.tasks().some((t) => t.xp.some((g) => g.skillId === id))) return fail(res, 409, "Missions still give XP to this skill. Remove it from them first.");
+    if (store.skillUsedByTasks(id)) return fail(res, 409, "Missions still give XP to this skill. Remove it from them first.");
     if (!store.deleteSkill(id)) return fail(res, 404, "Skill not found.");
     res.status(204).end();
   });

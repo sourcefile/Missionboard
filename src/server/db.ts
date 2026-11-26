@@ -1,8 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { BoardState, Reward, Skill, Spend, Task, TaskInput } from "../shared/game.js";
-import { balanceOf } from "../shared/game.js";
+import type { BoardState, Completion, Reward, Skill, Spend, Task, TaskInput, XpGrant } from "../shared/game.js";
+import { balanceOf, doneThisPeriod, isRecurring, skillXp, streakOf } from "../shared/game.js";
 
 // Starter content for a brand-new board. These are guesses; edit them in the dashboard.
 const DEFAULT_SKILLS = ["Focus", "Fitness", "Learning", "Creativity"];
@@ -13,70 +13,188 @@ const DEFAULT_REWARDS: [string, number][] = [
   ["Free evening, no chores", 200],
 ];
 
+const LOG_LIMIT = 100;
+
 type Row = Record<string, unknown>;
+
+export interface StoreOptions {
+  seed?: boolean;
+  /** 0 = Sunday, 1 = Monday ... */
+  weekStart?: number;
+  /** Injectable clock for tests. */
+  now?: () => Date;
+}
 
 export class Store {
   readonly db: DatabaseSync;
+  readonly weekStart: number;
+  private readonly now: () => Date;
 
-  constructor(file: string, seed = true) {
+  constructor(file: string, opts: StoreOptions = {}) {
+    this.weekStart = opts.weekStart ?? 1;
+    this.now = opts.now ?? (() => new Date());
     if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
     this.db = new DatabaseSync(file);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS skills (
-        id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE
-      );
-      CREATE TABLE IF NOT EXISTS tasks (
-        id INTEGER PRIMARY KEY,
-        title TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('duration','window','extra')),
-        credits INTEGER NOT NULL,
-        duration_min INTEGER, day TEXT, start TEXT, "end" TEXT,
-        xp TEXT NOT NULL DEFAULT '[]',
-        done INTEGER NOT NULL DEFAULT 0,
-        done_at TEXT,
-        created_at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS rewards (
-        id INTEGER PRIMARY KEY, name TEXT NOT NULL, cost INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS spends (
-        id INTEGER PRIMARY KEY, reward_name TEXT NOT NULL, cost INTEGER NOT NULL, at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
-    `);
-    if (seed && !this.db.prepare("SELECT 1 FROM meta WHERE key = 'seeded'").get()) {
+    this.migrate();
+    if ((opts.seed ?? true) && !this.meta("seeded")) {
       const addSkill = this.db.prepare("INSERT OR IGNORE INTO skills (name) VALUES (?)");
       const addReward = this.db.prepare("INSERT INTO rewards (name, cost) VALUES (?, ?)");
       DEFAULT_SKILLS.forEach((s) => addSkill.run(s));
       DEFAULT_REWARDS.forEach(([n, c]) => addReward.run(n, c));
-      this.db.prepare("INSERT INTO meta (key, value) VALUES ('seeded', ?)").run(new Date().toISOString());
+      this.setMeta("seeded", this.now().toISOString());
     }
   }
 
-  private toTask(r: Row): Task {
+  private meta(key: string): string | undefined {
+    const r = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined;
+    return r?.value;
+  }
+  private setMeta(key: string, value: string) {
+    this.db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+  }
+
+  private tx<T>(fn: () => T): T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const out = fn();
+      this.db.exec("COMMIT");
+      return out;
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
+  /** Schema versions: 1 = first release (done flag on tasks), 2 = completions ledger + daily/weekly missions. */
+  private migrate() {
+    this.db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+    const hasTasks = Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks'").get());
+    let version = Number(this.meta("schema_version") ?? (hasTasks ? 1 : 0));
+
+    if (version === 0) {
+      this.tx(() => {
+        this.db.exec(`
+          CREATE TABLE skills (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE);
+          CREATE TABLE tasks (
+            id INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            credits INTEGER NOT NULL,
+            duration_min INTEGER, day TEXT, start TEXT, "end" TEXT,
+            xp TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL
+          );
+          CREATE TABLE completions (
+            id INTEGER PRIMARY KEY,
+            task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+            title TEXT NOT NULL,
+            credits INTEGER NOT NULL,
+            xp TEXT NOT NULL DEFAULT '[]',
+            at TEXT NOT NULL
+          );
+          CREATE INDEX completions_task ON completions(task_id, at);
+          CREATE TABLE rewards (id INTEGER PRIMARY KEY, name TEXT NOT NULL, cost INTEGER NOT NULL);
+          CREATE TABLE spends (id INTEGER PRIMARY KEY, reward_name TEXT NOT NULL, cost INTEGER NOT NULL, at TEXT NOT NULL);
+        `);
+        this.setMeta("schema_version", "2");
+      });
+      version = 2;
+    }
+
+    if (version === 1) {
+      // Move "done" payouts into the completions ledger and drop the old kind CHECK so daily/weekly fit.
+      this.db.exec("PRAGMA foreign_keys = OFF");
+      this.tx(() => {
+        this.db.exec(`
+          CREATE TABLE tasks_v2 (
+            id INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            credits INTEGER NOT NULL,
+            duration_min INTEGER, day TEXT, start TEXT, "end" TEXT,
+            xp TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL
+          );
+          INSERT INTO tasks_v2 (id, title, kind, credits, duration_min, day, start, "end", xp, created_at)
+            SELECT id, title, kind, credits, duration_min, day, start, "end", xp, created_at FROM tasks;
+          CREATE TABLE completions (
+            id INTEGER PRIMARY KEY,
+            task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+            title TEXT NOT NULL,
+            credits INTEGER NOT NULL,
+            xp TEXT NOT NULL DEFAULT '[]',
+            at TEXT NOT NULL
+          );
+          INSERT INTO completions (task_id, title, credits, xp, at)
+            SELECT id, title, credits, xp, COALESCE(done_at, created_at) FROM tasks WHERE done = 1;
+          DROP TABLE tasks;
+          ALTER TABLE tasks_v2 RENAME TO tasks;
+          CREATE INDEX completions_task ON completions(task_id, at);
+        `);
+        this.setMeta("schema_version", "2");
+      });
+      this.db.exec("PRAGMA foreign_keys = ON");
+      version = 2;
+    }
+  }
+
+  // ---------- reads ----------
+
+  private completionRows(): Completion[] {
+    return this.db
+      .prepare("SELECT id, task_id, title, credits, xp, at FROM completions ORDER BY at DESC, id DESC")
+      .all()
+      .map((r) => {
+        const row = r as Row;
+        return {
+          id: Number(row.id),
+          taskId: row.task_id == null ? null : Number(row.task_id),
+          title: String(row.title),
+          credits: Number(row.credits),
+          xp: JSON.parse(String(row.xp)) as XpGrant[],
+          at: String(row.at),
+        };
+      });
+  }
+
+  private toTask(r: Row, completedAt: string[]): Task {
+    const kind = r.kind as Task["kind"];
+    const now = this.now();
+    const recurring = isRecurring(kind);
+    const done = recurring ? doneThisPeriod(kind, completedAt, now, this.weekStart) : completedAt.length > 0;
     return {
       id: Number(r.id),
       title: String(r.title),
-      kind: r.kind as Task["kind"],
+      kind,
       credits: Number(r.credits),
       durationMin: r.duration_min == null ? null : Number(r.duration_min),
       day: (r.day as string) ?? null,
       start: (r.start as string) ?? null,
       end: (r.end as string) ?? null,
       xp: JSON.parse(String(r.xp)),
-      done: Boolean(r.done),
-      doneAt: (r.done_at as string) ?? null,
+      done,
+      doneAt: done ? (completedAt[0] ?? null) : null,
+      streak: recurring ? streakOf(kind, completedAt, now, this.weekStart) : 0,
       createdAt: String(r.created_at),
     };
   }
 
-  tasks(): Task[] {
-    return this.db.prepare("SELECT * FROM tasks ORDER BY id").all().map((r) => this.toTask(r as Row));
+  private completedAtByTask(completions = this.completionRows()): Map<number, string[]> {
+    const m = new Map<number, string[]>();
+    for (const c of completions) if (c.taskId != null) (m.get(c.taskId) ?? m.set(c.taskId, []).get(c.taskId)!).push(c.at);
+    return m; // newest first
+  }
+
+  tasks(completions = this.completionRows()): Task[] {
+    const by = this.completedAtByTask(completions);
+    return this.db.prepare("SELECT * FROM tasks ORDER BY id").all().map((r) => this.toTask(r as Row, by.get(Number((r as Row).id)) ?? []));
   }
   task(id: number): Task | undefined {
     const r = this.db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
-    return r ? this.toTask(r as Row) : undefined;
+    if (!r) return undefined;
+    const at = (this.db.prepare("SELECT at FROM completions WHERE task_id = ? ORDER BY at DESC, id DESC").all(id) as { at: string }[]).map((x) => x.at);
+    return this.toTask(r as Row, at);
   }
   skills(): Skill[] {
     return this.db.prepare("SELECT id, name FROM skills ORDER BY name").all() as unknown as Skill[];
@@ -85,19 +203,37 @@ export class Store {
     return this.db.prepare("SELECT id, name, cost FROM rewards ORDER BY cost, name").all() as unknown as Reward[];
   }
   spends(): Spend[] {
-    return this.db.prepare("SELECT id, reward_name AS rewardName, cost, at FROM spends ORDER BY at DESC").all() as unknown as Spend[];
+    return this.db.prepare("SELECT id, reward_name AS rewardName, cost, at FROM spends ORDER BY at DESC, id DESC").all() as unknown as Spend[];
   }
   balance(): number {
-    return balanceOf(this.tasks(), this.spends());
+    const earned = Number((this.db.prepare("SELECT COALESCE(SUM(credits), 0) AS n FROM completions").get() as { n: number }).n);
+    const spent = Number((this.db.prepare("SELECT COALESCE(SUM(cost), 0) AS n FROM spends").get() as { n: number }).n);
+    return earned - spent;
+  }
+  skillUsedByTasks(skillId: number): boolean {
+    return this.tasks().some((t) => t.xp.some((g) => g.skillId === skillId));
   }
   state(): BoardState {
-    return { tasks: this.tasks(), skills: this.skills(), rewards: this.rewards(), spends: this.spends(), balance: this.balance() };
+    const completions = this.completionRows();
+    const spends = this.spends();
+    return {
+      tasks: this.tasks(completions),
+      skills: this.skills(),
+      skillXp: Object.fromEntries(skillXp(completions)),
+      rewards: this.rewards(),
+      spends: spends.slice(0, LOG_LIMIT),
+      completions: completions.slice(0, LOG_LIMIT),
+      balance: balanceOf(completions, spends),
+      weekStart: this.weekStart,
+    };
   }
+
+  // ---------- writes ----------
 
   addTask(t: Required<TaskInput>): Task {
     const r = this.db
       .prepare(`INSERT INTO tasks (title, kind, credits, duration_min, day, start, "end", xp, created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
-      .run(t.title, t.kind, t.credits, t.durationMin, t.day, t.start, t.end, JSON.stringify(t.xp), new Date().toISOString());
+      .run(t.title, t.kind, t.credits, t.durationMin, t.day, t.start, t.end, JSON.stringify(t.xp), this.now().toISOString());
     return this.task(Number(r.lastInsertRowid))!;
   }
   updateTask(id: number, t: Required<TaskInput>): Task | undefined {
@@ -106,11 +242,32 @@ export class Store {
       .run(t.title, t.kind, t.credits, t.durationMin, t.day, t.start, t.end, JSON.stringify(t.xp), id);
     return this.task(id);
   }
-  setDone(id: number, done: boolean): void {
-    this.db.prepare("UPDATE tasks SET done=?, done_at=? WHERE id=?").run(done ? 1 : 0, done ? new Date().toISOString() : null, id);
-  }
   deleteTask(id: number): boolean {
     return Number(this.db.prepare("DELETE FROM tasks WHERE id=?").run(id).changes) > 0;
+  }
+
+  /** Pays out a mission once (once per day/week for recurring ones). Returns false if already done. */
+  complete(id: number): boolean {
+    return this.tx(() => {
+      const t = this.task(id);
+      if (!t || t.done) return false;
+      this.db
+        .prepare("INSERT INTO completions (task_id, title, credits, xp, at) VALUES (?,?,?,?,?)")
+        .run(t.id, t.title, t.credits, JSON.stringify(t.xp), this.now().toISOString());
+      return true;
+    });
+  }
+
+  /** The completion that makes a mission count as done right now (the latest one). */
+  currentCompletion(id: number): { id: number; credits: number } | undefined {
+    const t = this.task(id);
+    if (!t?.done) return undefined;
+    return this.db.prepare("SELECT id, credits FROM completions WHERE task_id = ? ORDER BY at DESC, id DESC LIMIT 1").get(id) as
+      | { id: number; credits: number }
+      | undefined;
+  }
+  removeCompletion(completionId: number) {
+    this.db.prepare("DELETE FROM completions WHERE id = ?").run(completionId);
   }
 
   addSkill(name: string): Skill {
@@ -135,6 +292,6 @@ export class Store {
     return Number(this.db.prepare("DELETE FROM rewards WHERE id=?").run(id).changes) > 0;
   }
   addSpend(name: string, cost: number): void {
-    this.db.prepare("INSERT INTO spends (reward_name, cost, at) VALUES (?,?,?)").run(name, cost, new Date().toISOString());
+    this.db.prepare("INSERT INTO spends (reward_name, cost, at) VALUES (?,?,?)").run(name, cost, this.now().toISOString());
   }
 }

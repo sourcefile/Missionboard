@@ -64,7 +64,7 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test the container
         run: |
-          docker run -d --name mb -p 8080:8080 ${{ steps.meta.outputs.image }}:sha-${{ github.sha }}
+          docker run -d --name mb -p 8080:8080 -e TZ=Europe/Amsterdam ${{ steps.meta.outputs.image }}:sha-${{ github.sha }}
           for i in $(seq 1 20); do
             if curl -fsS http://localhost:8080/api/health; then echo; break; fi
             sleep 1
@@ -72,3 +72,10 @@ jobs:
           curl -fsS http://localhost:8080/api/state | grep -q '"balance"'
           curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
           docker logs mb
+          docker logs mb 2>&1 | grep -q "time zone: Europe/Amsterdam"
+      - name: Data survives a container restart
+        run: |
+          curl -fsS -X POST -H 'Content-Type: application/json' -d '{"name":"Persistence check"}' http://localhost:8080/api/skills
+          docker restart mb
+          for i in $(seq 1 20); do curl -fsS http://localhost:8080/api/health && break; sleep 1; done
+          curl -fsS http://localhost:8080/api/state | grep -q "Persistence check"
