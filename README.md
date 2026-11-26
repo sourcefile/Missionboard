@@ -19,6 +19,27 @@ A personal task dashboard with game mechanics. Finish missions to earn **credits
 
 Daily and weekly missions show a **streak**: how many days or weeks in a row you completed them. Every completion is recorded in the credit log, so credits and XP you earned stay earned, even if you delete the mission later.
 
+## Ranks
+
+Your rank shows in the header and in the **Ranks** panel. A rank is reached when *all* of its requirements are met, and your rank is the highest one you qualify for. Each rank can require:
+
+- an **overall level** (the operator / hero level from your total XP),
+- **at least N skills at level L** (any skills), and/or
+- **specific skills** at a minimum level.
+
+Each rank has a cyberpunk name and a fantasy name; the active look decides which one is shown. Click **Edit ranks** to rename, add (up to 12), remove or reorder them. A board starts with four example ranks:
+
+| # | Cyberpunk | Fantasy | Requirements |
+|---|---|---|---|
+| 1 | Street Kid | Peasant | none |
+| 2 | Runner | Squire | overall level 2, 1 skill at level 1+ |
+| 3 | Netrunner | Knight | overall level 4, 2 skills at level 2+ |
+| 4 | Chrome Legend | Champion of the Realm | overall level 7, 3 skills at level 3+ |
+
+A skill that a rank requires can't be deleted until the rank no longer uses it.
+
+**Rank-locked rewards.** Every leisure shop item has an **Edit** button for its name, price and **minimum rank**. An item with a minimum rank shows which rank unlocks it and can't be bought until you reach that rank (the server enforces this too). Renaming or reordering ranks keeps these links; a rank that shop items still require can't be removed until you change those items.
+
 ## Looks
 
 Switch between **Cyberpunk** (neon HUD) and **Fantasy** (parchment quest board) with the toggle under the title. The choice is remembered per browser. In the fantasy look, missions become quests, credits become gold and the shop becomes the tavern; the data is the same.
@@ -33,6 +54,7 @@ Switch between **Cyberpunk** (neon HUD) and **Fantasy** (parchment quest board) 
 | Operator / hero level (header) | Same curve, using total XP across all skills | `src/client/App.tsx` |
 | Reopening a finished mission | Takes back its credits; blocked if they're already spent | `src/server/app.ts` |
 | Deleting a mission | Always allowed; earned credits and XP stay in the log | same |
+| Example ranks | Four ranks (see above), added once | `src/shared/ranks.ts` → `DEFAULT_RANKS` |
 | Starter skills and shop items | Focus, Fitness, Learning, Creativity; four leisure items | `src/server/db.ts` (only on a brand-new database) |
 
 ## Run it with Docker
@@ -95,7 +117,7 @@ npm run build && npm start
 ## Project layout
 
 ```
-src/shared/   game rules and types used by both sides (+ tests)
+src/shared/   game rules, ranks and types used by both sides (+ tests)
 src/server/   Express API, SQLite storage and schema upgrades (+ API tests)
 src/client/   React dashboard (+ component test)
 .github/workflows/ci.yml   typecheck, test, build, Docker build, container smoke test, publish on main

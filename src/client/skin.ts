@@ -18,6 +18,7 @@ export interface Skin {
   boot: string;
   completed: (credits: number) => string;
   levelUp: string;
+  rankUp: string;
 }
 
 export const SKINS: Record<SkinName, Skin> = {
@@ -39,6 +40,7 @@ export const SKINS: Record<SkinName, Skin> = {
     boot: "Booting Mission Board…",
     completed: (c) => `Mission complete. +${c} credits`,
     levelUp: "Level up!",
+    rankUp: "Rank up! You're now",
   },
   fantasy: {
     name: "fantasy",
@@ -58,6 +60,7 @@ export const SKINS: Record<SkinName, Skin> = {
     boot: "Unrolling the quest board…",
     completed: (c) => `Quest complete! +${c} gold`,
     levelUp: "Level up!",
+    rankUp: "You have risen to",
   },
 };
 

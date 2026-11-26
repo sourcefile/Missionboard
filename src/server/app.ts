@@ -2,6 +2,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { validateTask } from "../shared/game.js";
+import { meetsRank, validateRanks } from "../shared/ranks.js";
 import type { Store } from "./db.js";
 
 const idOf = (req: Request): number => {
@@ -63,17 +64,46 @@ export function createApp(store: Store, staticDir?: string) {
   app.delete("/api/skills/:id", (req, res) => {
     const id = idOf(req);
     if (store.skillUsedByTasks(id)) return fail(res, 409, "Missions still give XP to this skill. Remove it from them first.");
+    if (store.skillUsedByRanks(id)) return fail(res, 409, "A rank requires this skill. Change the rank first.");
     if (!store.deleteSkill(id)) return fail(res, 404, "Skill not found.");
     res.status(204).end();
   });
 
+  // Ranks
+  app.get("/api/ranks", (_req, res) => { res.json(store.ranks()); });
+  app.put("/api/ranks", (req, res) => {
+    const v = validateRanks(req.body, new Set(store.skills().map((s) => s.id)));
+    if (!v.ok) return fail(res, 400, v.error);
+    const kept = new Set(v.value.map((r) => r.id));
+    const removed = store.ranks().filter((r) => !kept.has(r.id));
+    const blocked = store.rewardsRequiringRanks(removed.map((r) => r.id));
+    if (blocked.length) {
+      return fail(res, 409, `Shop items still require a rank you removed (${blocked.map((b) => b.name).join(", ")}). Change those items first.`);
+    }
+    res.json(store.replaceRanks(v.value));
+  });
+
   // Leisure shop
+  const readReward = (body: Record<string, unknown> | undefined): { ok: true; name: string; cost: number; minRankId: number | null } | { ok: false; error: string } => {
+    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    const cost = body?.cost;
+    const minRankId = body?.minRankId ?? null;
+    if (!name || name.length > 60) return { ok: false, error: "Give the activity a name of up to 60 characters." };
+    if (typeof cost !== "number" || !Number.isInteger(cost) || cost < 1 || cost > 100000) return { ok: false, error: "The cost must be a whole number above 0." };
+    if (minRankId !== null && !store.ranks().some((r) => r.id === minRankId)) return { ok: false, error: "That rank doesn't exist any more." };
+    return { ok: true, name, cost, minRankId: minRankId as number | null };
+  };
   app.post("/api/rewards", (req, res) => {
-    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-    const cost = req.body?.cost;
-    if (!name || name.length > 60) return fail(res, 400, "Give the activity a name of up to 60 characters.");
-    if (!Number.isInteger(cost) || cost < 1 || cost > 100000) return fail(res, 400, "The cost must be a whole number above 0.");
-    res.status(201).json(store.addReward(name, cost));
+    const v = readReward(req.body);
+    if (!v.ok) return fail(res, 400, v.error);
+    res.status(201).json(store.addReward(v.name, v.cost, v.minRankId));
+  });
+  app.put("/api/rewards/:id", (req, res) => {
+    const id = idOf(req);
+    if (!store.reward(id)) return fail(res, 404, "Activity not found.");
+    const v = readReward(req.body);
+    if (!v.ok) return fail(res, 400, v.error);
+    res.json(store.updateReward(id, v.name, v.cost, v.minRankId));
   });
   app.delete("/api/rewards/:id", (req, res) => {
     if (!store.deleteReward(idOf(req))) return fail(res, 404, "Activity not found.");
@@ -82,6 +112,11 @@ export function createApp(store: Store, staticDir?: string) {
   app.post("/api/rewards/:id/redeem", (req, res) => {
     const r = store.reward(idOf(req));
     if (!r) return fail(res, 404, "Activity not found.");
+    const ranks = store.ranks();
+    if (!meetsRank(ranks, store.currentRankIndex(), r.minRankId)) {
+      const need = ranks.find((x) => x.id === r.minRankId);
+      return fail(res, 403, need ? `Reach the rank ${need.nameCyberpunk} / ${need.nameFantasy} to unlock this.` : "You need a higher rank for this.");
+    }
     const balance = store.balance();
     if (balance < r.cost) return fail(res, 409, `You need ${r.cost - balance} more credits for this.`);
     store.addSpend(r.name, r.cost);

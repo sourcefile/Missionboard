@@ -1,4 +1,5 @@
 import type { BoardState, Reward, Skill, Task, TaskInput } from "../shared/game";
+import type { Rank, RankInput } from "../shared/ranks";
 
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -21,7 +22,9 @@ export const api = {
   deleteTask: (id: number) => call<void>("DELETE", `/api/tasks/${id}`),
   addSkill: (name: string) => call<Skill>("POST", "/api/skills", { name }),
   deleteSkill: (id: number) => call<void>("DELETE", `/api/skills/${id}`),
-  addReward: (name: string, cost: number) => call<Reward>("POST", "/api/rewards", { name, cost }),
+  addReward: (r: { name: string; cost: number; minRankId: number | null }) => call<Reward>("POST", "/api/rewards", r),
+  updateReward: (id: number, r: { name: string; cost: number; minRankId: number | null }) => call<Reward>("PUT", `/api/rewards/${id}`, r),
   deleteReward: (id: number) => call<void>("DELETE", `/api/rewards/${id}`),
+  saveRanks: (ranks: RankInput[]) => call<Rank[]>("PUT", "/api/ranks", ranks),
   redeem: (id: number) => call<BoardState>("POST", `/api/rewards/${id}/redeem`),
 };

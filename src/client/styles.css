@@ -386,6 +386,46 @@ html[data-skin="fantasy"] {
 [data-skin="fantasy"] .skin-switch button[aria-checked="true"] { background: var(--magenta); color: var(--on-accent); }
 [data-skin="fantasy"] .boot { color: var(--magenta); font-family: var(--f-display); }
 
+/* ---------- Ranks ---------- */
+.hud-stats { grid-template-columns: minmax(160px, auto) repeat(4, minmax(100px, auto)); }
+@media (max-width: 760px) { .hud-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; } .hud-rank { grid-column: 1 / -1; } }
+.hud-rank { border-color: var(--magenta); }
+.hud-rank-name { font-size: 1.15rem; line-height: 1.35; color: var(--title); overflow-wrap: anywhere; }
+.ladder { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rung { padding: 10px 12px; border: 1px solid var(--line); background: var(--card); border-radius: var(--radius); }
+.rung-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.rung-no { font-family: var(--f-mono); color: var(--muted); font-size: 0.75rem; min-width: 1.2em; }
+.rung-name { font-family: var(--f-display); font-weight: 600; color: var(--title); letter-spacing: 0.04em; }
+.rung-alt { color: var(--muted); font-size: 0.8rem; font-style: italic; }
+.rung-badge { margin-left: auto; font-family: var(--f-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--on-accent); background: var(--magenta); padding: 1px 8px; border-radius: var(--radius); }
+.rung-badge-next { background: transparent; color: var(--cyan); border: 1px solid var(--cyan); }
+.rung-current { border-color: var(--magenta); box-shadow: inset 3px 0 0 var(--magenta); }
+.rung-next { border-color: color-mix(in srgb, var(--cyan) 60%, transparent); }
+.rung-locked { opacity: 0.6; }
+.rung-earned .rung-name { color: var(--muted); }
+.reqs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.req { font-family: var(--f-mono); font-size: 0.72rem; padding: 1px 8px; border: 1px solid var(--line-hot); color: var(--muted); border-radius: var(--radius); }
+.req-met { color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); }
+.rank-editor { display: flex; flex-direction: column; gap: 12px; }
+.rank-editor .hint { margin: 0; }
+.rank-row { border: 1px solid var(--line-hot); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; border-radius: var(--radius); }
+.rank-row legend { padding: 0 6px; }
+.req-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem; }
+.req-line select { flex: 1 1 120px; width: auto; }
+.num-in { width: 72px; flex: 0 0 72px; }
+.rank-row-actions, .rank-editor .mform-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.spacer { flex: 1; }
+[data-skin="fantasy"] .rung-name { letter-spacing: 0.02em; }
+[data-skin="fantasy"] .rung-badge { font-family: var(--f-mono); letter-spacing: 0.05em; }
+
+/* ---------- Rank-locked shop items ---------- */
+.shop-item.is-locked .shop-name { color: var(--muted); }
+.rank-lock { display: inline-block; margin-left: 8px; font-family: var(--f-mono); font-size: 0.68rem; letter-spacing: 0.06em; padding: 0 6px; border: 1px solid var(--magenta); color: var(--magenta); border-radius: var(--radius); vertical-align: 2px; }
+.rank-lock-ok { border-color: color-mix(in srgb, var(--green) 50%, transparent); color: var(--green); }
+.reward-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--cyan); border-radius: var(--radius); margin: 6px 0; }
+.reward-form .field { flex: 1 1 140px; }
+.reward-form > .field { flex: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
