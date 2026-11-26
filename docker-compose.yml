@@ -1,0 +1,12 @@
+services:
+  mission-board:
+    build: .
+    image: mission-board:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - mission-board-data:/data
+    restart: unless-stopped
+
+volumes:
+  mission-board-data:

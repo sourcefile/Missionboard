@@ -1,0 +1,40 @@
+{
+  "name": "mission-board",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal task dashboard: finish missions, earn credits for leisure and XP for skills.",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "dev": "node --run dev:server & node --run dev:client",
+    "dev:server": "tsx watch src/server/index.ts",
+    "dev:client": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "test": "vitest run",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "start": "node dist/server/index.js"
+  },
+  "dependencies": {
+    "express": "5.3.0"
+  },
+  "devDependencies": {
+    "@fontsource/chakra-petch": "5.3.0",
+    "@fontsource/orbitron": "5.3.0",
+    "@fontsource/share-tech-mono": "5.3.0",
+    "@testing-library/react": "16.3.3",
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.7",
+    "@types/react": "19.3.3",
+    "@types/react-dom": "19.3.0",
+    "@types/supertest": "7.2.1",
+    "@vitejs/plugin-react": "6.3.0",
+    "jsdom": "31.0.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "supertest": "7.3.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "8.4.0",
+    "vitest": "5.1.2"
+  }
+}
