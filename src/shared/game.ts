@@ -1,4 +1,5 @@
 // Game rules shared by the API and the dashboard.
+import type { Rank } from "./ranks.js";
 
 export type TaskKind = "duration" | "window" | "extra" | "daily" | "weekly";
 export type RecurringKind = "daily" | "weekly";
@@ -73,6 +74,8 @@ export interface BoardState {
   balance: number;
   /** 0 = Sunday, 1 = Monday ... */
   weekStart: number;
+  /** Rank ladder, lowest first. */
+  ranks: Rank[];
 }
 
 export const MAX_SKILLS_PER_TASK = 3;

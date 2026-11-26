@@ -2,6 +2,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { validateTask } from "../shared/game.js";
+import { validateRanks } from "../shared/ranks.js";
 import type { Store } from "./db.js";
 
 const idOf = (req: Request): number => {
@@ -63,8 +64,17 @@ export function createApp(store: Store, staticDir?: string) {
   app.delete("/api/skills/:id", (req, res) => {
     const id = idOf(req);
     if (store.skillUsedByTasks(id)) return fail(res, 409, "Missions still give XP to this skill. Remove it from them first.");
+    if (store.skillUsedByRanks(id)) return fail(res, 409, "A rank requires this skill. Change the rank first.");
     if (!store.deleteSkill(id)) return fail(res, 404, "Skill not found.");
     res.status(204).end();
+  });
+
+  // Ranks
+  app.get("/api/ranks", (_req, res) => { res.json(store.ranks()); });
+  app.put("/api/ranks", (req, res) => {
+    const v = validateRanks(req.body, new Set(store.skills().map((s) => s.id)));
+    if (!v.ok) return fail(res, 400, v.error);
+    res.json(store.replaceRanks(v.value));
   });
 
   // Leisure shop

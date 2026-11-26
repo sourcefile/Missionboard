@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { BoardState, Completion, Reward, Skill, Spend, Task, TaskInput, XpGrant } from "../shared/game.js";
 import { balanceOf, doneThisPeriod, isRecurring, skillXp, streakOf } from "../shared/game.js";
+import { DEFAULT_RANKS, type Rank, type RankInput } from "../shared/ranks.js";
 
 // Starter content for a brand-new board. These are guesses; edit them in the dashboard.
 const DEFAULT_SKILLS = ["Focus", "Fitness", "Learning", "Creativity"];
@@ -66,7 +67,7 @@ export class Store {
     }
   }
 
-  /** Schema versions: 1 = first release (done flag on tasks), 2 = completions ledger + daily/weekly missions. */
+  /** Schema versions: 1 = first release (done flag on tasks), 2 = completions ledger + daily/weekly missions, 3 = ranks. */
   private migrate() {
     this.db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
     const hasTasks = Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks'").get());
@@ -137,6 +138,65 @@ export class Store {
       this.db.exec("PRAGMA foreign_keys = ON");
       version = 2;
     }
+
+    if (version === 2) {
+      this.tx(() => {
+        this.db.exec(`
+          CREATE TABLE ranks (
+            id INTEGER PRIMARY KEY,
+            position INTEGER NOT NULL,
+            name_cyberpunk TEXT NOT NULL,
+            name_fantasy TEXT NOT NULL,
+            min_overall_level INTEGER NOT NULL DEFAULT 0,
+            any_skill_count INTEGER NOT NULL DEFAULT 0,
+            any_skill_level INTEGER NOT NULL DEFAULT 0,
+            skills TEXT NOT NULL DEFAULT '[]'
+          );
+        `);
+        this.insertRanks(DEFAULT_RANKS); // four example ranks, for new and upgraded boards alike
+        this.setMeta("schema_version", "3");
+      });
+      version = 3;
+    }
+  }
+
+  private insertRanks(ranks: RankInput[]) {
+    const ins = this.db.prepare(
+      "INSERT INTO ranks (position, name_cyberpunk, name_fantasy, min_overall_level, any_skill_count, any_skill_level, skills) VALUES (?,?,?,?,?,?,?)",
+    );
+    ranks.forEach((r, i) => ins.run(i, r.nameCyberpunk, r.nameFantasy, r.minOverallLevel, r.anySkillCount, r.anySkillLevel, JSON.stringify(r.skills)));
+  }
+
+  ranks(): Rank[] {
+    return this.db
+      .prepare("SELECT * FROM ranks ORDER BY position, id")
+      .all()
+      .map((x) => {
+        const r = x as Row;
+        return {
+          id: Number(r.id),
+          position: Number(r.position),
+          nameCyberpunk: String(r.name_cyberpunk),
+          nameFantasy: String(r.name_fantasy),
+          minOverallLevel: Number(r.min_overall_level),
+          anySkillCount: Number(r.any_skill_count),
+          anySkillLevel: Number(r.any_skill_level),
+          skills: JSON.parse(String(r.skills)),
+        };
+      });
+  }
+
+  /** Replaces the whole ladder, lowest rank first. */
+  replaceRanks(ranks: RankInput[]): Rank[] {
+    this.tx(() => {
+      this.db.exec("DELETE FROM ranks");
+      this.insertRanks(ranks);
+    });
+    return this.ranks();
+  }
+
+  skillUsedByRanks(skillId: number): boolean {
+    return this.ranks().some((r) => r.skills.some((s) => s.skillId === skillId));
   }
 
   // ---------- reads ----------
@@ -225,6 +285,7 @@ export class Store {
       completions: completions.slice(0, LOG_LIMIT),
       balance: balanceOf(completions, spends),
       weekStart: this.weekStart,
+      ranks: this.ranks(),
     };
   }
 

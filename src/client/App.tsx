@@ -5,6 +5,8 @@ import { api } from "./api";
 import { fmtDay, resetLabel, stateLabel, whenLabel } from "./format";
 import { MissionForm } from "./MissionForm";
 import { SKINS, applySkin, loadSkin, type SkinName } from "./skin";
+import { progressFrom, rankStatus } from "../shared/ranks";
+import { RanksPanel, rankName } from "./Ranks";
 
 type Filter = "open" | "routine" | "timed" | "extra" | "done";
 const FILTERS: [Filter, string][] = [["open", "Active"], ["routine", "Daily & weekly"], ["timed", "Timed"], ["extra", "Extra"], ["done", "Completed"]];
@@ -88,6 +90,10 @@ export function App() {
 
   const totalXp = [...xp.values()].reduce((a, b) => a + b, 0);
   const operator = levelProgress(totalXp);
+  const ladder = [...state.ranks].sort((a, b) => a.position - b.position);
+  const progress = progressFrom(xp, state.skills.map((s) => s.id));
+  const rank = rankStatus(ladder, progress);
+  const currentRank = ladder[rank.current];
   const open = state.tasks.filter((t) => !t.done);
   const weekAgo = Date.now() - 7 * 864e5;
   const doneWeek = state.completions.filter((c) => new Date(c.at).getTime() > weekAgo).length;
@@ -110,7 +116,20 @@ export function App() {
     const ups = m.xp
       .filter((g) => levelOf((before.get(g.skillId) ?? 0) + g.amount) > levelOf(before.get(g.skillId) ?? 0))
       .map((g) => `${skillName(g.skillId)} → ${t.lv} ${levelOf((before.get(g.skillId) ?? 0) + g.amount)}`);
-    if (await run(() => api.complete(m.id), ups.length ? `${t.levelUp} ${ups.join(", ")}` : t.completed(m.credits))) setPulse((n) => n + 1);
+    try {
+      const next = await api.complete(m.id);
+      setState(next);
+      const nextRanks = [...next.ranks].sort((a, b) => a.position - b.position);
+      const after = rankStatus(nextRanks, progressFrom(next.skillXp, next.skills.map((s) => s.id))).current;
+      const promoted = after > rank.current && nextRanks[after];
+      setToast({
+        text: promoted ? `${t.rankUp} ${rankName(promoted, skinName)}` : ups.length ? `${t.levelUp} ${ups.join(", ")}` : t.completed(m.credits),
+        tone: "ok",
+      });
+      setPulse((n) => n + 1);
+    } catch (e) {
+      setToast({ text: (e as Error).message, tone: "err" });
+    }
   };
 
   const card = (m: Task) => {
@@ -183,6 +202,10 @@ export function App() {
           </div>
         </div>
         <div className="hud-stats">
+          <div className="hud-stat hud-rank">
+            <span className="hud-label">Rank{rank.next !== null ? ` · next: ${rankName(ladder[rank.next]!, skinName)}` : ""}</span>
+            <span className="hud-value hud-rank-name">{currentRank ? rankName(currentRank, skinName) : "Unranked"}</span>
+          </div>
           <div key={pulse} className={`hud-stat hud-credits ${pulse ? "pulse" : ""}`}>
             <span className="hud-label">{t.currencyName}</span>
             <span className="hud-value">{state.balance}<small className="unit"> {t.currency}</small></span>
@@ -259,6 +282,15 @@ export function App() {
         </section>
 
         <aside className="side">
+          <RanksPanel
+            ranks={ladder}
+            current={rank.current}
+            progress={progress}
+            skills={state.skills}
+            skin={skinName}
+            onSave={(r) => run(() => api.saveRanks(r), "Ranks saved")}
+          />
+
           <section className="panel" aria-labelledby="skills-h">
             <div className="panel-head"><h2 id="skills-h">Skills</h2></div>
             <div className="skills">
