@@ -1,4 +1,5 @@
 import type { Task, TimingState } from "../shared/game";
+import { isRecurring, nextPeriodStart } from "../shared/game";
 
 const day = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
 const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
@@ -9,7 +10,17 @@ export const fmtDuration = (m: number) => {
   return h ? `${h}h${r ? ` ${r}m` : ""}` : `${r}m`;
 };
 
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
+
+/** "Resets at midnight" / "Resets Mon" for daily and weekly missions. */
+export function resetLabel(t: Task, weekStart: number, now = new Date()): string {
+  if (!isRecurring(t.kind)) return "";
+  if (t.kind === "daily") return "Resets at midnight";
+  return `Resets ${weekday.format(nextPeriodStart("weekly", now, weekStart))}`;
+}
+
 export function whenLabel(t: Task, now = new Date()): string {
+  if (isRecurring(t.kind)) return [t.kind === "daily" ? "Every day" : "Every week", t.durationMin ? fmtDuration(t.durationMin) : ""].filter(Boolean).join(" · ");
   if (t.kind === "window" && t.start && t.end) {
     const s = new Date(t.start), e = new Date(t.end);
     const sameDay = s.toDateString() === e.toDateString();

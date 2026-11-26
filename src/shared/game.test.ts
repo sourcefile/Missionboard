@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { balanceOf, levelOf, levelProgress, skillXp, suggestCredits, timingState, validateTask, xpForLevel } from "./game";
+import { balanceOf, doneThisPeriod, levelOf, levelProgress, nextPeriodStart, periodStart, skillXp, streakOf, suggestCredits, timingState, validateTask, xpForLevel } from "./game";
 
 describe("levels", () => {
   it("uses growing thresholds", () => {
@@ -15,21 +15,56 @@ describe("levels", () => {
 });
 
 describe("credits and XP", () => {
-  const tasks = [
-    { done: true, credits: 20, xp: [{ skillId: 1, amount: 30 }, { skillId: 2, amount: 10 }] },
-    { done: false, credits: 50, xp: [{ skillId: 1, amount: 99 }] },
-    { done: true, credits: 15, xp: [{ skillId: 1, amount: 5 }] },
+  const completions = [
+    { credits: 20, xp: [{ skillId: 1, amount: 30 }, { skillId: 2, amount: 10 }] },
+    { credits: 15, xp: [{ skillId: 1, amount: 5 }] },
   ];
-  it("counts only finished missions, minus spending", () => {
-    expect(balanceOf(tasks, [{ cost: 10 }])).toBe(25);
+  it("adds up payouts minus spending", () => {
+    expect(balanceOf(completions, [{ cost: 10 }])).toBe(25);
   });
   it("sums XP per skill", () => {
-    expect(Object.fromEntries(skillXp(tasks))).toEqual({ 1: 35, 2: 10 });
+    expect(Object.fromEntries(skillXp(completions))).toEqual({ 1: 35, 2: 10 });
   });
   it("suggests credits from time", () => {
     expect(suggestCredits("duration", 60)).toBe(30);
     expect(suggestCredits("duration", 4)).toBe(5);
     expect(suggestCredits("extra", 0)).toBe(10);
+    expect(suggestCredits("daily", 0)).toBe(10);
+    expect(suggestCredits("weekly", 90)).toBe(45);
+  });
+});
+
+describe("daily and weekly periods", () => {
+  // Thursday 26 Nov 2026, 12:00 local time
+  const thu = new Date(2026, 10, 26, 12, 0);
+  const at = (d: number, h = 9) => new Date(2026, 10, d, h, 0).toISOString();
+
+  it("finds the start of the day and of the week", () => {
+    expect(periodStart("daily", thu)).toEqual(new Date(2026, 10, 26));
+    expect(periodStart("weekly", thu)).toEqual(new Date(2026, 10, 23)); // Monday
+    expect(periodStart("weekly", thu, 0)).toEqual(new Date(2026, 10, 22)); // Sunday start
+    expect(periodStart("weekly", new Date(2026, 10, 23, 0, 0))).toEqual(new Date(2026, 10, 23));
+    expect(nextPeriodStart("weekly", thu)).toEqual(new Date(2026, 10, 30));
+    expect(nextPeriodStart("daily", thu)).toEqual(new Date(2026, 10, 27));
+  });
+
+  it("refreshes a daily mission at midnight", () => {
+    expect(doneThisPeriod("daily", [at(26, 8)], thu)).toBe(true);
+    expect(doneThisPeriod("daily", [at(25, 23)], thu)).toBe(false);
+  });
+
+  it("refreshes a weekly mission on the first day of the week", () => {
+    expect(doneThisPeriod("weekly", [at(23, 8)], thu)).toBe(true); // Monday this week
+    expect(doneThisPeriod("weekly", [at(22, 20)], thu)).toBe(false); // last Sunday
+    expect(doneThisPeriod("weekly", [at(22, 20)], thu, 0)).toBe(true); // if weeks start on Sunday
+  });
+
+  it("counts streaks without breaking on an unfinished current period", () => {
+    expect(streakOf("daily", [at(25), at(24), at(23), at(21)], thu)).toBe(3);
+    expect(streakOf("daily", [at(26), at(25), at(24)], thu)).toBe(3);
+    expect(streakOf("daily", [at(24)], thu)).toBe(0);
+    expect(streakOf("weekly", [at(24), at(17), at(10), at(1)], thu)).toBe(3);
+    expect(streakOf("daily", [], thu)).toBe(0);
   });
 });
 
@@ -71,6 +106,13 @@ describe("validateTask", () => {
   });
   it("rejects unknown skills", () => {
     expect(validateTask({ ...base, xp: [{ skillId: 9, amount: 5 }] }, new Set([1])).ok).toBe(false);
+  });
+  it("accepts daily and weekly missions with an optional duration", () => {
+    const d = validateTask({ title: "Stretch", kind: "daily", credits: 5, xp: [] });
+    expect(d.ok && d.value).toMatchObject({ kind: "daily", durationMin: null, day: null, start: null });
+    const w = validateTask({ title: "Plan week", kind: "weekly", credits: 20, durationMin: 30, day: "2026-11-26", xp: [] });
+    expect(w.ok && w.value).toMatchObject({ kind: "weekly", durationMin: 30, day: null });
+    expect(validateTask({ title: "x", kind: "daily", credits: 5, durationMin: 0, xp: [] }).ok).toBe(false);
   });
   it("drops scheduling fields that don't belong to the type", () => {
     const r = validateTask({ ...base, kind: "extra", durationMin: 30, start: "2026-11-26T10:00:00Z" });

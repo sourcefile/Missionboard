@@ -1,6 +1,10 @@
 // Game rules shared by the API and the dashboard.
 
-export type TaskKind = "duration" | "window" | "extra";
+export type TaskKind = "duration" | "window" | "extra" | "daily" | "weekly";
+export type RecurringKind = "daily" | "weekly";
+
+export const isRecurring = (kind: TaskKind): kind is RecurringKind => kind === "daily" || kind === "weekly";
+export const isTimed = (kind: TaskKind) => kind === "duration" || kind === "window";
 
 export interface XpGrant {
   skillId: number;
@@ -11,7 +15,7 @@ export interface TaskInput {
   title: string;
   kind: TaskKind;
   credits: number;
-  durationMin?: number | null;
+  durationMin?: number | null; // required for duration missions, optional for daily/weekly
   day?: string | null; // YYYY-MM-DD, optional plan date for duration missions
   start?: string | null; // ISO date-time, window missions
   end?: string | null; // ISO date-time, window missions
@@ -20,9 +24,22 @@ export interface TaskInput {
 
 export interface Task extends Required<TaskInput> {
   id: number;
+  /** One-off missions: completed at all. Daily/weekly: completed in the current day/week. */
   done: boolean;
   doneAt: string | null;
+  /** Daily/weekly: consecutive days/weeks completed (0 for one-off missions). */
+  streak: number;
   createdAt: string;
+}
+
+/** One payout. Kept when a mission is deleted, so earned credits and XP stay earned. */
+export interface Completion {
+  id: number;
+  taskId: number | null;
+  title: string;
+  credits: number;
+  xp: XpGrant[];
+  at: string;
 }
 
 export interface Skill {
@@ -46,9 +63,16 @@ export interface Spend {
 export interface BoardState {
   tasks: Task[];
   skills: Skill[];
+  /** Total XP per skill id. */
+  skillXp: Record<number, number>;
   rewards: Reward[];
+  /** Most recent first, capped. */
   spends: Spend[];
+  /** Most recent first, capped. */
+  completions: Completion[];
   balance: number;
+  /** 0 = Sunday, 1 = Monday ... */
+  weekStart: number;
 }
 
 export const MAX_SKILLS_PER_TASK = 3;
@@ -69,9 +93,9 @@ export function levelProgress(xp: number) {
   return { level, xp, floor, next, pct: Math.round(((xp - floor) / (next - floor)) * 100) };
 }
 
-/** Suggested credits: 1 credit per 2 minutes of planned work, minimum 5; extra missions default to 10. */
+/** Suggested credits: 1 credit per 2 minutes of planned work, minimum 5; missions without a time default to 10. */
 export function suggestCredits(kind: TaskKind, minutes: number): number {
-  if (kind === "extra") return 10;
+  if (kind === "extra" || (isRecurring(kind) && !(minutes > 0))) return 10;
   return Math.max(5, Math.round(minutes / 2));
 }
 
@@ -79,19 +103,62 @@ export function minutesBetween(start: string, end: string): number {
   return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000);
 }
 
-export function balanceOf(tasks: Pick<Task, "done" | "credits">[], spends: Pick<Spend, "cost">[]): number {
-  const earned = tasks.filter((t) => t.done).reduce((sum, t) => sum + t.credits, 0);
+export function balanceOf(completions: Pick<Completion, "credits">[], spends: Pick<Spend, "cost">[]): number {
+  const earned = completions.reduce((sum, c) => sum + c.credits, 0);
   const spent = spends.reduce((sum, s) => sum + s.cost, 0);
   return earned - spent;
 }
 
-export function skillXp(tasks: Pick<Task, "done" | "xp">[]): Map<number, number> {
+export function skillXp(completions: Pick<Completion, "xp">[]): Map<number, number> {
   const totals = new Map<number, number>();
-  for (const t of tasks) {
-    if (!t.done) continue;
-    for (const g of t.xp) totals.set(g.skillId, (totals.get(g.skillId) ?? 0) + g.amount);
+  for (const c of completions) {
+    for (const g of c.xp) totals.set(g.skillId, (totals.get(g.skillId) ?? 0) + g.amount);
   }
   return totals;
+}
+
+// ---------- recurring periods (local time of whoever runs the code; the server sets TZ) ----------
+
+/** Start of the day or week that contains `at`. */
+export function periodStart(kind: RecurringKind, at: Date, weekStart = 1): Date {
+  const d = new Date(at.getFullYear(), at.getMonth(), at.getDate());
+  if (kind === "weekly") d.setDate(d.getDate() - ((d.getDay() - weekStart + 7) % 7));
+  return d;
+}
+
+/** Start of the next day or week after `at`'s period: when the mission refreshes. */
+export function nextPeriodStart(kind: RecurringKind, at: Date, weekStart = 1): Date {
+  const d = periodStart(kind, at, weekStart);
+  d.setDate(d.getDate() + (kind === "weekly" ? 7 : 1));
+  return d;
+}
+
+function previousPeriodStart(kind: RecurringKind, start: Date): Date {
+  const d = new Date(start);
+  d.setDate(d.getDate() - (kind === "weekly" ? 7 : 1));
+  return d;
+}
+
+/** Is there a completion inside the current day/week? */
+export function doneThisPeriod(kind: RecurringKind, completedAt: (string | Date)[], now = new Date(), weekStart = 1): boolean {
+  const start = periodStart(kind, now, weekStart).getTime();
+  return completedAt.some((a) => new Date(a).getTime() >= start);
+}
+
+/**
+ * Consecutive periods completed, counting back from the current one.
+ * The current period counts only once done, so an unfinished today doesn't break yesterday's streak.
+ */
+export function streakOf(kind: RecurringKind, completedAt: (string | Date)[], now = new Date(), weekStart = 1): number {
+  const starts = new Set(completedAt.map((a) => periodStart(kind, new Date(a), weekStart).getTime()));
+  let cursor = periodStart(kind, now, weekStart);
+  if (!starts.has(cursor.getTime())) cursor = previousPeriodStart(kind, cursor);
+  let streak = 0;
+  while (starts.has(cursor.getTime())) {
+    streak++;
+    cursor = previousPeriodStart(kind, cursor);
+  }
+  return streak;
 }
 
 export type TimingState = "overdue" | "active" | "today" | "upcoming" | "none";
@@ -139,7 +206,7 @@ export function validateTask(raw: unknown, knownSkills?: Set<number>): Result<Re
   if (!title) return { ok: false, error: "Give the mission a name." };
   if (title.length > 140) return { ok: false, error: "Keep the name under 140 characters." };
   const kind = r.kind;
-  if (kind !== "duration" && kind !== "window" && kind !== "extra") return { ok: false, error: "Pick a mission type." };
+  if (kind !== "duration" && kind !== "window" && kind !== "extra" && kind !== "daily" && kind !== "weekly") return { ok: false, error: "Pick a mission type." };
   if (!isInt(r.credits) || r.credits < 0 || r.credits > 10000) return { ok: false, error: "Credits must be a whole number from 0 to 10000." };
 
   const out: Required<TaskInput> = { title, kind, credits: r.credits, durationMin: null, day: null, start: null, end: null, xp: [] };
@@ -158,6 +225,9 @@ export function validateTask(raw: unknown, knownSkills?: Set<number>): Result<Re
     if (e <= s) return { ok: false, error: "The end time needs to be after the start time." };
     out.start = s.toISOString();
     out.end = e.toISOString();
+  } else if (isRecurring(kind) && r.durationMin != null && r.durationMin !== "") {
+    if (!isInt(r.durationMin) || r.durationMin < 1 || r.durationMin > 24 * 60) return { ok: false, error: "Set a duration between 1 minute and 24 hours, or leave it empty." };
+    out.durationMin = r.durationMin;
   }
 
   const xpRaw = Array.isArray(r.xp) ? r.xp : [];
