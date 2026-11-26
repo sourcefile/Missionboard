@@ -52,6 +52,8 @@ export interface Reward {
   id: number;
   name: string;
   cost: number;
+  /** Lowest rank (id) allowed to buy this, or null for everyone. */
+  minRankId: number | null;
 }
 
 export interface Spend {

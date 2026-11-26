@@ -14,7 +14,7 @@ const state: BoardState = {
   ranks: DEFAULT_RANKS.map((r, i) => ({ ...r, id: i + 1, position: i })),
   skills: [{ id: 1, name: "Focus" }],
   skillXp: { 1: 120 },
-  rewards: [{ id: 1, name: "30 min of gaming", cost: 30 }, { id: 2, name: "Night out", cost: 200 }],
+  rewards: [{ id: 1, name: "30 min of gaming", cost: 30, minRankId: null }, { id: 2, name: "Night out", cost: 200, minRankId: null }, { id: 3, name: "Weekend trip", cost: 20, minRankId: 3 }],
   spends: [],
   completions: [],
   tasks: [
@@ -36,7 +36,8 @@ describe("dashboard", () => {
     expect(screen.getByText("Tidy desk")).toBeTruthy();
     expect(screen.getByText("+40 XP")).toBeTruthy();
     const buttons = screen.getAllByRole("button").filter((b) => b.className.includes("btn-buy"));
-    expect(buttons.map((b) => [b.textContent, (b as HTMLButtonElement).disabled])).toEqual([["Redeem", false], ["−160", true]]);
+    expect(buttons.map((b) => [b.textContent, (b as HTMLButtonElement).disabled])).toEqual([["Redeem", false], ["−160", true], ["Locked", true]]);
+    expect(screen.getByText("Needs Netrunner")).toBeTruthy();
   });
 
   it("groups daily missions and shows their streak", async () => {
@@ -55,6 +56,7 @@ describe("dashboard", () => {
     expect(document.documentElement.dataset.skin).toBe("fantasy");
     expect(screen.getByRole("heading", { level: 2, name: "Quests" })).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Buy" })).toHaveLength(1);
+    expect(screen.getByText("Needs Knight")).toBeTruthy();
     expect(localStorage.getItem("mb-skin")).toBe("fantasy");
   });
 

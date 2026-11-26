@@ -418,6 +418,14 @@ html[data-skin="fantasy"] {
 [data-skin="fantasy"] .rung-name { letter-spacing: 0.02em; }
 [data-skin="fantasy"] .rung-badge { font-family: var(--f-mono); letter-spacing: 0.05em; }
 
+/* ---------- Rank-locked shop items ---------- */
+.shop-item.is-locked .shop-name { color: var(--muted); }
+.rank-lock { display: inline-block; margin-left: 8px; font-family: var(--f-mono); font-size: 0.68rem; letter-spacing: 0.06em; padding: 0 6px; border: 1px solid var(--magenta); color: var(--magenta); border-radius: var(--radius); vertical-align: 2px; }
+.rank-lock-ok { border-color: color-mix(in srgb, var(--green) 50%, transparent); color: var(--green); }
+.reward-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--cyan); border-radius: var(--radius); margin: 6px 0; }
+.reward-form .field { flex: 1 1 140px; }
+.reward-form > .field { flex: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

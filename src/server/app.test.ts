@@ -141,6 +141,41 @@ describe("ranks", () => {
     await request(app).delete(`/api/skills/${skillId}`).expect(409); // used by a rank
   });
 
+  it("locks shop items behind a rank until it's reached", async () => {
+    const ranks = (await request(app).get("/api/ranks")).body as { id: number }[];
+    const runner = ranks[1]!.id;
+    const item = await request(app).post("/api/rewards").send({ name: "Concert", cost: 10, minRankId: runner }).expect(201);
+    expect(item.body.minRankId).toBe(runner);
+    // plenty of credits, but rank 1
+    const t = await request(app).post("/api/tasks").send(mission({ credits: 100, xp: [] })).expect(201);
+    await request(app).post(`/api/tasks/${t.body.id}/complete`);
+    const locked = await request(app).post(`/api/rewards/${item.body.id}/redeem`).expect(403);
+    expect(locked.body.error).toMatch(/Runner/);
+    // 300 XP in Focus: overall level 2 and one skill at level 1 -> Runner
+    const t2 = await request(app).post("/api/tasks").send(mission({ title: "Grind", credits: 0, xp: [{ skillId, amount: 300 }] })).expect(201);
+    await request(app).post(`/api/tasks/${t2.body.id}/complete`);
+    await request(app).post(`/api/rewards/${item.body.id}/redeem`).expect(200);
+  });
+
+  it("edits a shop item, including its rank", async () => {
+    const ranks = (await request(app).get("/api/ranks")).body as { id: number }[];
+    const item = await request(app).post("/api/rewards").send({ name: "Film", cost: 10 }).expect(201);
+    expect(item.body.minRankId).toBeNull();
+    const r = await request(app).put(`/api/rewards/${item.body.id}`).send({ name: "Cinema night", cost: 25, minRankId: ranks[2]!.id }).expect(200);
+    expect(r.body).toMatchObject({ name: "Cinema night", cost: 25, minRankId: ranks[2]!.id });
+    await request(app).put(`/api/rewards/${item.body.id}`).send({ name: "x", cost: 5, minRankId: 999 }).expect(400);
+  });
+
+  it("keeps rank ids when the ladder is edited, and protects ranks shop items need", async () => {
+    const ranks = (await request(app).get("/api/ranks")).body as { id: number; nameCyberpunk: string }[];
+    await request(app).post("/api/rewards").send({ name: "Trip", cost: 50, minRankId: ranks[3]!.id }).expect(201);
+    const renamed = ranks.map((r) => ({ ...r, nameCyberpunk: r.nameCyberpunk + "!" }));
+    const saved = await request(app).put("/api/ranks").send(renamed).expect(200);
+    expect(saved.body.map((r: { id: number }) => r.id)).toEqual(ranks.map((r) => r.id));
+    const r = await request(app).put("/api/ranks").send(renamed.slice(0, 3)).expect(409);
+    expect(r.body.error).toMatch(/Trip/);
+  });
+
   it("rejects a rank without names", async () => {
     const r = await request(app).put("/api/ranks").send([{ nameCyberpunk: "", nameFantasy: "x", minOverallLevel: 0, anySkillCount: 0, anySkillLevel: 0, skills: [] }]).expect(400);
     expect(r.body.error).toMatch(/name/);

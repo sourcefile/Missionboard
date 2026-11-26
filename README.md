@@ -38,6 +38,8 @@ Each rank has a cyberpunk name and a fantasy name; the active look decides which
 
 A skill that a rank requires can't be deleted until the rank no longer uses it.
 
+**Rank-locked rewards.** Every leisure shop item has an **Edit** button for its name, price and **minimum rank**. An item with a minimum rank shows which rank unlocks it and can't be bought until you reach that rank (the server enforces this too). Renaming or reordering ranks keeps these links; a rank that shop items still require can't be removed until you change those items.
+
 ## Looks
 
 Switch between **Cyberpunk** (neon HUD) and **Fantasy** (parchment quest board) with the toggle under the title. The choice is remembered per browser. In the fantasy look, missions become quests, credits become gold and the shop becomes the tavern; the data is the same.

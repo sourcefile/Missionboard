@@ -7,6 +7,7 @@ import { MissionForm } from "./MissionForm";
 import { SKINS, applySkin, loadSkin, type SkinName } from "./skin";
 import { progressFrom, rankStatus } from "../shared/ranks";
 import { RanksPanel, rankName } from "./Ranks";
+import { ShopPanel } from "./Shop";
 
 type Filter = "open" | "routine" | "timed" | "extra" | "done";
 const FILTERS: [Filter, string][] = [["open", "Active"], ["routine", "Daily & weekly"], ["timed", "Timed"], ["extra", "Extra"], ["done", "Completed"]];
@@ -325,36 +326,17 @@ export function App() {
             <InlineAdd placeholder="New skill" onAdd={(name) => run(() => api.addSkill(name), "Skill added")} />
           </section>
 
-          <section className="panel" aria-labelledby="shop-h">
-            <div className="panel-head"><h2 id="shop-h">{t.shop}</h2><span className="hint">Balance {state.balance} {t.currency}</span></div>
-            <div className="shop">
-              {state.rewards.length === 0 && <div className="empty"><strong>Nothing in the shop</strong>Add a leisure activity and its price.</div>}
-              {state.rewards.map((r) => {
-                const short = r.cost - state.balance;
-                const asking = confirm === `r${r.id}`;
-                return (
-                  <div key={r.id} className="shop-item">
-                    <span className="shop-name">{r.name}</span>
-                    <span className="shop-cost">{r.cost} {t.currency}</span>
-                    {asking ? (
-                      <>
-                        <button className="btn-danger btn-xs" onClick={() => { setConfirm(null); run(() => api.deleteReward(r.id), "Activity removed"); }}>Remove</button>
-                        <button className="btn-ghost btn-xs" onClick={() => setConfirm(null)}>Keep</button>
-                      </>
-                    ) : (
-                      <>
-                        <button className="btn-buy btn-xs" disabled={short > 0} title={short > 0 ? `Need ${short} more ${t.currencyName.toLowerCase()}` : undefined} onClick={() => run(() => api.redeem(r.id), `Enjoy: ${r.name}`)}>
-                          {short > 0 ? `−${short}` : t.redeem}
-                        </button>
-                        <button className="btn-ghost btn-xs" aria-label={`Remove ${r.name}`} onClick={() => setConfirm(`r${r.id}`)}>×</button>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <InlineAdd placeholder="Activity, e.g. 1 hour gaming" costLabel={t.currency} withCost onAdd={(name, cost) => run(() => api.addReward(name, cost ?? 0), "Activity added")} />
-          </section>
+          <ShopPanel
+            rewards={state.rewards}
+            ranks={ladder}
+            currentRank={rank.current}
+            balance={state.balance}
+            skin={t}
+            onAdd={(r) => run(() => api.addReward(r), "Activity added")}
+            onUpdate={(id, r) => run(() => api.updateReward(id, r), "Activity updated")}
+            onRemove={(id) => run(() => api.deleteReward(id), "Activity removed")}
+            onRedeem={(r) => run(() => api.redeem(r.id), `Enjoy: ${r.name}`)}
+          />
 
           <section className="panel" aria-labelledby="log-h">
             <div className="panel-head"><h2 id="log-h">{t.log}</h2></div>

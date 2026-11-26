@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { BoardState, Completion, Reward, Skill, Spend, Task, TaskInput, XpGrant } from "../shared/game.js";
 import { balanceOf, doneThisPeriod, isRecurring, skillXp, streakOf } from "../shared/game.js";
-import { DEFAULT_RANKS, type Rank, type RankInput } from "../shared/ranks.js";
+import { DEFAULT_RANKS, progressFrom, rankStatus, type Rank, type RankInput } from "../shared/ranks.js";
 
 // Starter content for a brand-new board. These are guesses; edit them in the dashboard.
 const DEFAULT_SKILLS = ["Focus", "Fitness", "Learning", "Creativity"];
@@ -67,7 +67,7 @@ export class Store {
     }
   }
 
-  /** Schema versions: 1 = first release (done flag on tasks), 2 = completions ledger + daily/weekly missions, 3 = ranks. */
+  /** Schema versions: 1 = first release (done flag on tasks), 2 = completions ledger + daily/weekly missions, 3 = ranks, 4 = rank-restricted shop items. */
   private migrate() {
     this.db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
     const hasTasks = Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks'").get());
@@ -158,6 +158,14 @@ export class Store {
       });
       version = 3;
     }
+
+    if (version === 3) {
+      this.tx(() => {
+        this.db.exec("ALTER TABLE rewards ADD COLUMN min_rank_id INTEGER REFERENCES ranks(id) ON DELETE SET NULL");
+        this.setMeta("schema_version", "4");
+      });
+      version = 4;
+    }
   }
 
   private insertRanks(ranks: RankInput[]) {
@@ -186,13 +194,30 @@ export class Store {
       });
   }
 
-  /** Replaces the whole ladder, lowest rank first. */
+  /** Replaces the whole ladder, lowest rank first. Ranks sent with an id are updated in place. */
   replaceRanks(ranks: RankInput[]): Rank[] {
     this.tx(() => {
-      this.db.exec("DELETE FROM ranks");
-      this.insertRanks(ranks);
+      const keep = new Set(ranks.map((r) => r.id).filter((id): id is number => id !== undefined));
+      for (const old of this.ranks()) if (!keep.has(old.id)) this.db.prepare("DELETE FROM ranks WHERE id = ?").run(old.id);
+      const upd = this.db.prepare(
+        "UPDATE ranks SET position=?, name_cyberpunk=?, name_fantasy=?, min_overall_level=?, any_skill_count=?, any_skill_level=?, skills=? WHERE id=?",
+      );
+      const ins = this.db.prepare(
+        "INSERT INTO ranks (position, name_cyberpunk, name_fantasy, min_overall_level, any_skill_count, any_skill_level, skills) VALUES (?,?,?,?,?,?,?)",
+      );
+      ranks.forEach((r, i) => {
+        const vals = [i, r.nameCyberpunk, r.nameFantasy, r.minOverallLevel, r.anySkillCount, r.anySkillLevel, JSON.stringify(r.skills)] as const;
+        if (r.id !== undefined && Number(upd.run(...vals, r.id).changes) > 0) return;
+        ins.run(...vals);
+      });
     });
     return this.ranks();
+  }
+
+  /** Shop items that require one of these ranks. */
+  rewardsRequiringRanks(rankIds: number[]): Reward[] {
+    const ids = new Set(rankIds);
+    return this.rewards().filter((r) => r.minRankId != null && ids.has(r.minRankId));
   }
 
   skillUsedByRanks(skillId: number): boolean {
@@ -260,7 +285,7 @@ export class Store {
     return this.db.prepare("SELECT id, name FROM skills ORDER BY name").all() as unknown as Skill[];
   }
   rewards(): Reward[] {
-    return this.db.prepare("SELECT id, name, cost FROM rewards ORDER BY cost, name").all() as unknown as Reward[];
+    return this.db.prepare("SELECT id, name, cost, min_rank_id AS minRankId FROM rewards ORDER BY cost, name").all() as unknown as Reward[];
   }
   spends(): Spend[] {
     return this.db.prepare("SELECT id, reward_name AS rewardName, cost, at FROM spends ORDER BY at DESC, id DESC").all() as unknown as Spend[];
@@ -342,12 +367,21 @@ export class Store {
     return Number(this.db.prepare("DELETE FROM skills WHERE id=?").run(id).changes) > 0;
   }
 
-  addReward(name: string, cost: number): Reward {
-    const r = this.db.prepare("INSERT INTO rewards (name, cost) VALUES (?, ?)").run(name, cost);
-    return { id: Number(r.lastInsertRowid), name, cost };
+  addReward(name: string, cost: number, minRankId: number | null = null): Reward {
+    const r = this.db.prepare("INSERT INTO rewards (name, cost, min_rank_id) VALUES (?, ?, ?)").run(name, cost, minRankId);
+    return { id: Number(r.lastInsertRowid), name, cost, minRankId };
+  }
+  updateReward(id: number, name: string, cost: number, minRankId: number | null): Reward | undefined {
+    this.db.prepare("UPDATE rewards SET name=?, cost=?, min_rank_id=? WHERE id=?").run(name, cost, minRankId, id);
+    return this.reward(id);
   }
   reward(id: number): Reward | undefined {
-    return this.db.prepare("SELECT id, name, cost FROM rewards WHERE id=?").get(id) as unknown as Reward | undefined;
+    return this.db.prepare("SELECT id, name, cost, min_rank_id AS minRankId FROM rewards WHERE id=?").get(id) as unknown as Reward | undefined;
+  }
+  /** Ladder index of the rank the current progress qualifies for. */
+  currentRankIndex(): number {
+    const s = this.state();
+    return rankStatus(s.ranks, progressFrom(s.skillXp, s.skills.map((k) => k.id))).current;
   }
   deleteReward(id: number): boolean {
     return Number(this.db.prepare("DELETE FROM rewards WHERE id=?").run(id).changes) > 0;

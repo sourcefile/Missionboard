@@ -9,6 +9,8 @@ export interface SkillRequirement {
 }
 
 export interface RankInput {
+  /** Set when editing an existing rank, so shop items that require it keep pointing at it. */
+  id?: number;
   nameCyberpunk: string;
   nameFantasy: string;
   /** Overall (operator / hero) level, from total XP across all skills. 0 = no requirement. */
@@ -117,7 +119,20 @@ export function validateRanks(raw: unknown, knownSkills?: Set<number>): Result<R
       seen.add(s.skillId);
       skills.push({ skillId: s.skillId, minLevel: s.minLevel });
     }
-    out.push({ nameCyberpunk, nameFantasy, minOverallLevel: r.minOverallLevel, anySkillCount: r.anySkillCount, anySkillLevel: r.anySkillLevel, skills });
+    const id = isInt(r.id, 1, Number.MAX_SAFE_INTEGER) ? r.id : undefined;
+    if (id !== undefined && out.some((x) => x.id === id)) return { ok: false, error: `Rank ${n} is listed twice.` };
+    out.push({ ...(id !== undefined ? { id } : {}), nameCyberpunk, nameFantasy, minOverallLevel: r.minOverallLevel, anySkillCount: r.anySkillCount, anySkillLevel: r.anySkillLevel, skills });
   }
   return { ok: true, value: out };
+}
+
+/**
+ * Can someone at ladder index `currentIndex` buy an item that needs `minRankId`?
+ * Unknown rank ids (shouldn't happen) count as unrestricted.
+ */
+export function meetsRank(ranks: Rank[], currentIndex: number, minRankId: number | null): boolean {
+  if (minRankId == null) return true;
+  const ladder = [...ranks].sort((a, b) => a.position - b.position);
+  const need = ladder.findIndex((r) => r.id === minRankId);
+  return need < 0 || currentIndex >= need;
 }
