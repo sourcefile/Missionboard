@@ -27,12 +27,10 @@ interface SubRow {
   id?: number;
   title: string;
   credits: string;
-  skillId: string;
-  amount: string;
-  /** XP grants beyond the first, kept as they are (the form edits one skill per subtask). */
-  moreXp: XpGrant[];
+  /** Picked skills, up to MAX_SKILLS_PER_TASK, each with its XP. */
+  xp: { skillId: number; amount: string }[];
 }
-const blankSub = (): SubRow => ({ title: "", credits: "10", skillId: "", amount: "10", moreXp: [] });
+const blankSub = (): SubRow => ({ title: "", credits: "10", xp: [] });
 
 export function MissionForm({ task, noun, operationName, currency, skills, onSave, onCancel }: Props) {
   const nextHour = useMemo(() => { const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d; }, []);
@@ -54,13 +52,18 @@ export function MissionForm({ task, noun, operationName, currency, skills, onSav
           id: s.id,
           title: s.title,
           credits: String(s.credits),
-          skillId: s.xp[0] ? String(s.xp[0].skillId) : "",
-          amount: s.xp[0] ? String(s.xp[0].amount) : "10",
-          moreXp: s.xp.slice(1),
+          xp: s.xp.map((g) => ({ skillId: g.skillId, amount: String(g.amount) })),
         }))
       : [blankSub(), blankSub()],
   );
   const setSub = (i: number, patch: Partial<SubRow>) => setSubs(subs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const toggleSubSkill = (i: number, skillId: number) => {
+    const cur = subs[i]!.xp;
+    if (cur.some((g) => g.skillId === skillId)) setSub(i, { xp: cur.filter((g) => g.skillId !== skillId) });
+    else if (cur.length < MAX_SKILLS_PER_TASK) setSub(i, { xp: [...cur, { skillId, amount: "10" }] });
+  };
+  const setSubXp = (i: number, skillId: number, amount: string) =>
+    setSub(i, { xp: subs[i]!.xp.map((g) => (g.skillId === skillId ? { ...g, amount } : g)) });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -88,10 +91,7 @@ export function MissionForm({ task, noun, operationName, currency, skills, onSav
               ...(r.id !== undefined ? { id: r.id } : {}),
               title: r.title.trim(),
               credits: Math.round(Number(r.credits) || 0),
-              xp: [
-                ...(r.skillId && Number(r.amount) > 0 ? [{ skillId: Number(r.skillId), amount: Math.round(Number(r.amount)) }] : []),
-                ...r.moreXp.filter((g) => String(g.skillId) !== r.skillId),
-              ],
+              xp: r.xp.filter((g) => Number(g.amount) > 0).map((g): XpGrant => ({ skillId: g.skillId, amount: Math.round(Number(g.amount)) })),
             }))
         : [],
     };
@@ -157,17 +157,45 @@ export function MissionForm({ task, noun, operationName, currency, skills, onSav
       {op && (
         <fieldset className="sub-set">
           <legend className="label">Subtasks · each pays out when you tick it off</legend>
-          <div className="sub-row sub-head" aria-hidden="true"><span>Subtask</span><span>{currency}</span><span>Skill</span><span>XP</span><span /></div>
+          <div className="sub-row sub-head" aria-hidden="true"><span>Subtask</span><span>{currency}</span><span /></div>
           {subs.map((r, i) => (
-            <div key={r.id ?? `new-${i}`} className="sub-row">
-              <input aria-label={`Subtask ${i + 1}`} maxLength={140} value={r.title} onChange={(e) => setSub(i, { title: e.target.value })} placeholder={`Subtask ${i + 1}`} />
-              <input aria-label={`${currency} for subtask ${i + 1}`} className="sub-num" type="number" min={0} value={r.credits} onChange={(e) => setSub(i, { credits: e.target.value })} title={currency} />
-              <select aria-label={`Skill for subtask ${i + 1}`} value={r.skillId} onChange={(e) => setSub(i, { skillId: e.target.value })}>
-                <option value="">No skill</option>
-                {skills.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              <input aria-label={`XP for subtask ${i + 1}`} className="sub-num" type="number" min={1} value={r.amount} disabled={!r.skillId} onChange={(e) => setSub(i, { amount: e.target.value })} title="XP" />
-              <button type="button" className="btn-ghost btn-xs" aria-label={`Remove subtask ${i + 1}`} disabled={subs.length <= 1} onClick={() => setSubs(subs.filter((_, j) => j !== i))}>×</button>
+            <div key={r.id ?? `new-${i}`} className="sub-item">
+              <div className="sub-row">
+                <input aria-label={`Subtask ${i + 1}`} maxLength={140} value={r.title} onChange={(e) => setSub(i, { title: e.target.value })} placeholder={`Subtask ${i + 1}`} />
+                <input aria-label={`${currency} for subtask ${i + 1}`} className="sub-num" type="number" min={0} value={r.credits} onChange={(e) => setSub(i, { credits: e.target.value })} title={currency} />
+                <button type="button" className="btn-ghost btn-xs" aria-label={`Remove subtask ${i + 1}`} disabled={subs.length <= 1} onClick={() => setSubs(subs.filter((_, j) => j !== i))}>×</button>
+              </div>
+              {skills.length > 0 && (
+                <div className="sub-skills" role="group" aria-label={`Skills for subtask ${i + 1}, up to ${MAX_SKILLS_PER_TASK}`}>
+                  <span className="label">XP · up to {MAX_SKILLS_PER_TASK}</span>
+                  {skills.map((s) => {
+                    const g = r.xp.find((x) => x.skillId === s.id);
+                    return (
+                      <span key={s.id} className={`sub-skill ${g ? "on" : ""}`}>
+                        <button
+                          type="button"
+                          className="skill-chip"
+                          aria-pressed={Boolean(g)}
+                          disabled={!g && r.xp.length >= MAX_SKILLS_PER_TASK}
+                          onClick={() => toggleSubSkill(i, s.id)}
+                        >
+                          {s.name}
+                        </button>
+                        {g && (
+                          <input
+                            aria-label={`XP for ${s.name} on subtask ${i + 1}`}
+                            className="sub-xp"
+                            type="number"
+                            min={1}
+                            value={g.amount}
+                            onChange={(e) => setSubXp(i, s.id, e.target.value)}
+                          />
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ))}
           {subs.length < MAX_SUBTASKS && (

@@ -141,7 +141,10 @@ describe("dashboard", () => {
     fireEvent.click(screen.getByRole("radio", { name: /Operation/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Subtask 1" }), { target: { value: "Write copy" } });
     fireEvent.change(screen.getByRole("spinbutton", { name: "CR for subtask 1" }), { target: { value: "30" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Skill for subtask 1" }), { target: { value: "1" } });
+    const subSkills = screen.getByRole("group", { name: "Skills for subtask 1, up to 3" });
+    fireEvent.click(within(subSkills).getByRole("button", { name: "Focus" }));
+    fireEvent.click(within(subSkills).getByRole("button", { name: "Fitness" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "XP for Fitness on subtask 1" }), { target: { value: "25" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Subtask 2" }), { target: { value: "Go live" } });
     expect(screen.getByText(/Suggested: 10 CR/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Add mission" }));
@@ -150,7 +153,7 @@ describe("dashboard", () => {
     expect(JSON.parse(String(init!.body))).toMatchObject({
       kind: "operation",
       credits: 10,
-      subtasks: [{ title: "Write copy", credits: 30, xp: [{ skillId: 1, amount: 10 }] }, { title: "Go live", credits: 10, xp: [] }],
+      subtasks: [{ title: "Write copy", credits: 30, xp: [{ skillId: 1, amount: 10 }, { skillId: 2, amount: 25 }] }, { title: "Go live", credits: 10, xp: [] }],
     });
   });
 
@@ -158,5 +161,21 @@ describe("dashboard", () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
     render(<App />);
     expect(await screen.findByText(/Can't reach the Mission Board server/)).toBeTruthy();
+  });
+});
+
+describe("subtask skills", () => {
+  it("allow at most three skills per subtask", async () => {
+    const many = { ...state, skills: [1, 2, 3, 4].map((id) => ({ id, name: `Skill ${id}` })) };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(many), { headers: { "Content-Type": "application/json" } })));
+    render(<App />);
+    await screen.findByText("Write report");
+    fireEvent.click(screen.getByRole("button", { name: "+ New mission" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Operation/ }));
+    const g = screen.getByRole("group", { name: "Skills for subtask 1, up to 3" });
+    for (const n of [1, 2, 3]) fireEvent.click(within(g).getByRole("button", { name: `Skill ${n}` }));
+    expect((within(g).getByRole("button", { name: "Skill 4" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(g).getByRole("button", { name: /Skill 2/ }));
+    expect((within(g).getByRole("button", { name: "Skill 4" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
