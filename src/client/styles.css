@@ -1,5 +1,5 @@
 /* Mission Board: two looks picked in the header, stored per browser.
-   Cyberpunk (default): neon HUD, dark-only. Fantasy: parchment and ink, light-only.
+   Cyberpunk (default): neon HUD, dark-only. Fantasy: a guild quest board (wood, cork, pinned parchment), see the end of this file.
    Layout: HUD bar on top, missions panel left, skills / shop / log column right; stacks on phones. */
 :root {
   --bg: #05060b;
@@ -311,101 +311,6 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .streak { color: var(--orange); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; }
 .streak::before { content: "▲ "; }
 
-/* =====================================================================
-   FANTASY: parchment, ink and wax seals
-   ===================================================================== */
-:root[data-skin="fantasy"] {
-  --bg: #efe2c2;
-  --bg-2: #e3cfa2;
-  --panel: rgba(251, 245, 228, 0.93);
-  --card: rgba(255, 251, 240, 0.85);
-  --line: #d8c495;
-  --line-hot: #b4945a;
-  --text: #3a2a18;
-  --muted: #7a6243;
-  --title: #2a1a0b;
-  --cyan: #2c6a4e;     /* emerald: primary actions */
-  --magenta: #9b2a24;  /* crimson: seals and danger */
-  --yellow: #94660a;   /* gold */
-  --green: #4b7a26;
-  --orange: #b0521b;
-  --violet: #5b3d8c;
-  --on-accent: #fbf3df;
-  --input-bg: #fffaf0;
-  --placeholder: #ab966f;
-  --toast-bg: #fbf3df;
-  --radius: 6px;
-
-  --f-display: "Cinzel", "Trajan Pro", Georgia, serif;
-  --f-body: "Alegreya", Georgia, "Times New Roman", serif;
-  --f-mono: "Alegreya SC", Georgia, serif;
-  color-scheme: light;
-}
-[data-skin="fantasy"] body { font-size: 16px; }
-html[data-skin="fantasy"] {
-  background-image:
-    radial-gradient(1000px 520px at 50% -8%, rgba(255, 250, 230, 0.9), transparent 70%),
-    radial-gradient(circle at 20% 80%, rgba(160, 110, 40, 0.10), transparent 40%),
-    linear-gradient(var(--bg), var(--bg-2));
-  background-attachment: fixed;
-}
-[data-skin="fantasy"] body::before { /* aged edges instead of the neon grid */
-  background: radial-gradient(ellipse at center, transparent 55%, rgba(110, 70, 20, 0.22));
-  mask-image: none;
-}
-[data-skin="fantasy"] body::after,
-[data-skin="fantasy"] .glitch::before,
-[data-skin="fantasy"] .glitch::after,
-[data-skin="fantasy"] .panel::before { display: none; }
-[data-skin="fantasy"] h1 { letter-spacing: 0.04em; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7); }
-[data-skin="fantasy"] .brand-kicker { color: var(--magenta); font-style: italic; letter-spacing: 0.04em; }
-[data-skin="fantasy"] h2 { letter-spacing: 0.08em; text-transform: none; font-size: 1.15rem; }
-[data-skin="fantasy"] .panel {
-  clip-path: none; border-radius: 10px; border-color: var(--line-hot);
-  outline: 1px solid color-mix(in srgb, var(--line-hot) 45%, transparent); outline-offset: -7px;
-  box-shadow: 0 10px 24px rgba(90, 60, 20, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  backdrop-filter: none;
-}
-[data-skin="fantasy"] .hud-stat { clip-path: none; border-radius: 8px; border-color: var(--line-hot); background: var(--panel); }
-[data-skin="fantasy"] .hud-credits { border-color: var(--yellow); box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--yellow) 15%, transparent); }
-[data-skin="fantasy"] .hud-credits .hud-value,
-[data-skin="fantasy"] .m-credits,
-[data-skin="fantasy"] .skill-lv { text-shadow: none; }
-[data-skin="fantasy"] .hud-bar i,
-[data-skin="fantasy"] .bar i,
-[data-skin="fantasy"] .mission::before { box-shadow: none; }
-[data-skin="fantasy"] .hud-label, [data-skin="fantasy"] .label, [data-skin="fantasy"] .group, [data-skin="fantasy"] .hint { letter-spacing: 0.05em; }
-[data-skin="fantasy"] .btn-primary, [data-skin="fantasy"] .btn-ghost, [data-skin="fantasy"] .btn-danger, [data-skin="fantasy"] .btn-buy {
-  clip-path: none; border-radius: 6px; text-transform: none; letter-spacing: 0.02em; font-size: 0.9rem;
-}
-[data-skin="fantasy"] .btn-xs { font-size: 0.8rem; }
-[data-skin="fantasy"] .btn-primary:hover, [data-skin="fantasy"] .btn-buy:hover:not(:disabled) { box-shadow: 0 2px 8px rgba(90, 60, 20, 0.25); }
-[data-skin="fantasy"] .tabs, [data-skin="fantasy"] .kind, [data-skin="fantasy"] .mform, [data-skin="fantasy"] .empty, [data-skin="fantasy"] .xp-chip, [data-skin="fantasy"] .tag { border-radius: 6px; }
-[data-skin="fantasy"] .finder { border-radius: 8px; background: color-mix(in srgb, var(--card) 70%, transparent); }
-[data-skin="fantasy"] .skill-chip { border-radius: 999px; font-family: inherit; font-size: 0.85rem; padding: 2px 12px; }
-[data-skin="fantasy"] .skill-chip[aria-pressed="true"] { box-shadow: none; }
-[data-skin="fantasy"] .finder-status { font-family: inherit; font-size: 0.85rem; }
-[data-skin="fantasy"] .tabs button { text-transform: none; letter-spacing: 0.03em; font-size: 0.85rem; }
-[data-skin="fantasy"] .tabs button[aria-selected="true"] { box-shadow: inset 0 -2px 0 var(--cyan); }
-[data-skin="fantasy"] .mission { border-radius: 8px; overflow: hidden; }
-[data-skin="fantasy"] .m-title { font-size: 1.1rem; }
-[data-skin="fantasy"] .check { /* wax seal */
-  clip-path: none; border-radius: 50%; border-color: var(--magenta);
-}
-[data-skin="fantasy"] .check:hover { background: color-mix(in srgb, var(--magenta) 12%, transparent); box-shadow: none; }
-[data-skin="fantasy"] .is-done .check {
-  background: radial-gradient(circle at 35% 30%, #c4453b, var(--magenta) 70%); border-color: #7c1f1a;
-  box-shadow: 0 1px 2px rgba(60, 10, 5, 0.4);
-}
-[data-skin="fantasy"] .mission.is-done .m-title { text-decoration-color: var(--magenta); }
-[data-skin="fantasy"] .mform { border-color: var(--cyan); box-shadow: none; }
-[data-skin="fantasy"] input:focus, [data-skin="fantasy"] select:focus { box-shadow: 0 0 0 1px var(--cyan); }
-[data-skin="fantasy"] .toast { clip-path: none; border-radius: 8px; box-shadow: 0 8px 24px rgba(90, 60, 20, 0.25); }
-[data-skin="fantasy"] .status-active { animation: none; font-weight: 600; }
-[data-skin="fantasy"] .streak::before { content: "✦ "; }
-[data-skin="fantasy"] .skin-switch button[aria-checked="true"] { background: var(--magenta); color: var(--on-accent); }
-[data-skin="fantasy"] .boot { color: var(--magenta); font-family: var(--f-display); }
-
 /* ---------- Ranks ---------- */
 .hud-stats { grid-template-columns: minmax(160px, auto) repeat(4, minmax(100px, auto)); }
 @media (max-width: 760px) { .hud-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; } .hud-rank { grid-column: 1 / -1; } }
@@ -435,8 +340,6 @@ html[data-skin="fantasy"] {
 .num-in { width: 72px; flex: 0 0 72px; }
 .rank-row-actions, .rank-editor .mform-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .spacer { flex: 1; }
-[data-skin="fantasy"] .rung-name { letter-spacing: 0.02em; }
-[data-skin="fantasy"] .rung-badge { font-family: var(--f-mono); letter-spacing: 0.05em; }
 
 /* ---------- Rank-locked shop items ---------- */
 .shop-item.is-locked .shop-name { color: var(--muted); }
@@ -480,7 +383,253 @@ html[data-skin="fantasy"] {
 .sub-skill.on .skill-chip { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .sub-xp { width: 64px; padding: 2px 6px; font-size: 0.8rem; border-left: 0; }
 .skill-chip:disabled { opacity: 0.4; cursor: not-allowed; }
-[data-skin="fantasy"] .subtask { border-radius: 6px; }
+
+/* =====================================================================
+   FANTASY: an adventuring guild's quest board.
+   The page is the guild hall's plank wall with a carved sign on it. The
+   quests panel is a cork board in a wooden frame with a carved header plank,
+   and every quest is a parchment notice pinned to the cork. Side panels and
+   HUD stats are pinned parchment too. Parchment carries dark ink tokens
+   (set on :root); wooden surfaces re-set the tokens to light inks.
+   All textures are CSS gradients, no images.
+   ===================================================================== */
+:root[data-skin="fantasy"] {
+  --bg: #3a2414;
+  --bg-2: #2a190d;
+  --panel: #f4e6c4;
+  --card: #f8ecd0;
+  --line: #d6bf8e;
+  --line-hot: #a9844c;
+  --text: #33230f;
+  --muted: #6f5536;
+  --title: #24160a;
+  --cyan: #2c6a4e;     /* emerald: primary actions */
+  --magenta: #9b2a24;  /* crimson: wax seals and danger */
+  --yellow: #85590a;   /* gold */
+  --green: #476f22;
+  --orange: #a84c16;
+  --violet: #5b3d8c;
+  --on-accent: #fbf3df;
+  --input-bg: #fffaf0;
+  --placeholder: #a08a64;
+  --toast-bg: #f8ecd0;
+  --radius: 4px;
+
+  --paper:
+    radial-gradient(circle at 16% 20%, rgba(170, 120, 50, 0.10), transparent 30%),
+    radial-gradient(circle at 84% 82%, rgba(150, 100, 40, 0.13), transparent 34%),
+    radial-gradient(circle at 70% 12%, rgba(120, 80, 30, 0.06), transparent 22%),
+    linear-gradient(172deg, #fbf2d9, #f0deb3);
+  --paper-edge: inset 0 0 0 1px rgba(120, 80, 30, 0.16), inset 0 0 26px rgba(140, 90, 30, 0.26);
+  --drop: 0 2px 2px rgba(20, 10, 0, 0.35), 0 10px 18px rgba(20, 10, 0, 0.32);
+  --plank:
+    repeating-linear-gradient(178deg, rgba(255, 225, 170, 0.05) 0 2px, rgba(0, 0, 0, 0.07) 2px 5px, transparent 5px 9px),
+    linear-gradient(180deg, #6e4524, #55331a);
+  --pin: #9b2a24;
+  --notch: 2px 7px 3px 8px / 8px 3px 7px 2px; /* hand-cut paper corners */
+
+  --f-display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --f-body: "Alegreya", Georgia, "Times New Roman", serif;
+  --f-mono: "Alegreya SC", Georgia, serif;
+  --f-notice: "IM Fell English", "Alegreya", Georgia, serif;
+  color-scheme: light;
+}
+
+/* ---- the hall wall: dark planks under lantern light ---- */
+html[data-skin="fantasy"] {
+  background-color: #3d2615;
+  background-image:
+    radial-gradient(1100px 620px at 50% -4%, rgba(255, 190, 110, 0.20), transparent 70%),
+    repeating-linear-gradient(180deg, transparent 0 136px, rgba(0, 0, 0, 0.55) 136px 138px, rgba(255, 210, 150, 0.08) 138px 139px, transparent 139px 140px),
+    repeating-linear-gradient(180.6deg, rgba(0, 0, 0, 0.08) 0 3px, transparent 3px 8px, rgba(255, 220, 170, 0.04) 8px 10px, transparent 10px 15px),
+    linear-gradient(90deg, #3a2313, #48301b 30%, #3b2414 55%, #4a311c 80%, #3a2313);
+  background-attachment: fixed;
+}
+[data-skin="fantasy"] body { font-size: 16px; overflow-x: clip; }
+[data-skin="fantasy"] body::before { background: radial-gradient(ellipse at center, transparent 50%, rgba(10, 4, 0, 0.55)); mask-image: none; }
+[data-skin="fantasy"] body::after,
+[data-skin="fantasy"] .glitch::before,
+[data-skin="fantasy"] .glitch::after,
+[data-skin="fantasy"] .panel-missions::before { display: none; }
+[data-skin="fantasy"] .boot { color: #f1d79a; font-family: var(--f-display); }
+
+/* ---- pins: one per notice, coloured by what it is ---- */
+[data-skin="fantasy"] .hud-stat::before,
+[data-skin="fantasy"] .side .panel::before,
+[data-skin="fantasy"] .missions .mission::before {
+  content: ""; display: block; position: absolute; z-index: 2;
+  top: -5px; left: 50%; right: auto; bottom: auto; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.75) 0 12%, var(--pin) 40%, color-mix(in srgb, var(--pin) 55%, #000) 100%);
+  box-shadow: 1px 3px 3px rgba(0, 0, 0, 0.45);
+}
+[data-skin="fantasy"] .hud-credits { --pin: #b8892b; }
+[data-skin="fantasy"] .hud-stat:nth-child(3) { --pin: #2c6a4e; }
+[data-skin="fantasy"] .hud-stat:nth-child(4) { --pin: #3f5f80; }
+[data-skin="fantasy"] .hud-stat:nth-child(5) { --pin: #6b4a8c; }
+[data-skin="fantasy"] .side .panel:nth-child(2) { --pin: #2c6a4e; }
+[data-skin="fantasy"] .side .panel:nth-child(3) { --pin: #b8892b; }
+[data-skin="fantasy"] .side .panel:nth-child(4) { --pin: #3f5f80; }
+[data-skin="fantasy"] .mission { --pin: #b8892b; }
+[data-skin="fantasy"] .mission.state-today { --pin: #476f22; }
+[data-skin="fantasy"] .mission.state-active { --pin: #2c6a4e; }
+[data-skin="fantasy"] .mission.is-recurring { --pin: #3f5f80; }
+[data-skin="fantasy"] .mission.is-operation { --pin: #9b2a24; }
+[data-skin="fantasy"] .mission.state-overdue { --pin: #c2581b; }
+[data-skin="fantasy"] .mission.is-done { --pin: #8c7a62; }
+
+/* ---- the guild sign ---- */
+[data-skin="fantasy"] .brand {
+  --title: #f3dca0; --text: #ead6ad; --muted: #cdb184; --line-hot: #8c6538;
+  position: relative; padding: 14px 24px 16px; border-radius: 6px; border: 1px solid #23130a; color: var(--text);
+  background-image:
+    radial-gradient(circle at 11px 11px, #d8b46c 0 1.5px, #3a210d 2.5px 3.5px, transparent 4px),
+    radial-gradient(circle at calc(100% - 11px) 11px, #d8b46c 0 1.5px, #3a210d 2.5px 3.5px, transparent 4px),
+    radial-gradient(circle at 11px calc(100% - 11px), #d8b46c 0 1.5px, #3a210d 2.5px 3.5px, transparent 4px),
+    radial-gradient(circle at calc(100% - 11px) calc(100% - 11px), #d8b46c 0 1.5px, #3a210d 2.5px 3.5px, transparent 4px),
+    var(--plank);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 160, 0.18), inset 0 -3px 0 rgba(0, 0, 0, 0.25), var(--drop);
+}
+[data-skin="fantasy"] .brand-kicker { color: #e2b878; font-style: italic; letter-spacing: 0.06em; font-family: var(--f-notice); font-size: 0.95rem; }
+[data-skin="fantasy"] h1 { letter-spacing: 0.06em; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 215, 140, 0.25), 0 0 18px rgba(255, 190, 90, 0.18); }
+[data-skin="fantasy"] .skin-switch { border-radius: 4px; }
+[data-skin="fantasy"] .skin-switch button { font-family: var(--f-mono); text-transform: none; font-size: 0.85rem; letter-spacing: 0.04em; }
+[data-skin="fantasy"] .skin-switch button[aria-checked="true"] { background: #9b2a24; color: #fbf3df; }
+
+/* ---- parchment surfaces ---- */
+[data-skin="fantasy"] .hud-stat,
+[data-skin="fantasy"] .side .panel,
+[data-skin="fantasy"] .mission,
+[data-skin="fantasy"] .finder,
+[data-skin="fantasy"] .mform,
+[data-skin="fantasy"] .missions .empty,
+[data-skin="fantasy"] .toast {
+  clip-path: none; backdrop-filter: none; border: 0; border-radius: var(--notch);
+  background: var(--paper); box-shadow: var(--paper-edge), var(--drop); outline: none;
+}
+[data-skin="fantasy"] .hud-stat { padding-top: 14px; }
+[data-skin="fantasy"] .hud-credits .hud-value, [data-skin="fantasy"] .m-credits, [data-skin="fantasy"] .skill-lv { text-shadow: none; }
+[data-skin="fantasy"] .hud-bar { background: rgba(90, 60, 20, 0.15); }
+[data-skin="fantasy"] .hud-bar i, [data-skin="fantasy"] .bar i { box-shadow: none; }
+[data-skin="fantasy"] .bar i { background: linear-gradient(90deg, var(--violet), #2c6a4e); }
+[data-skin="fantasy"] .hud-label, [data-skin="fantasy"] .label, [data-skin="fantasy"] .group, [data-skin="fantasy"] .hint { letter-spacing: 0.05em; }
+[data-skin="fantasy"] .side .panel { padding-top: 22px; }
+[data-skin="fantasy"] .side .panel:nth-child(odd) { transform: rotate(-0.35deg); }
+[data-skin="fantasy"] .side .panel:nth-child(even) { transform: rotate(0.3deg); }
+[data-skin="fantasy"] h2 { letter-spacing: 0.08em; text-transform: none; font-size: 1.15rem; }
+[data-skin="fantasy"] .side .empty { border-radius: var(--radius); border-color: var(--line-hot); }
+
+/* ---- the quest board: cork in a wooden frame ---- */
+[data-skin="fantasy"] .panel-missions {
+  clip-path: none; backdrop-filter: none; border-radius: 0; padding: 0 20px 24px; gap: 18px;
+  border: 14px solid #5a3a1e;
+  border-image: linear-gradient(135deg, #74492a, #4e3018 35%, #6a4324 65%, #452914) 1;
+  background-color: #a97b4b;
+  background-image:
+    radial-gradient(rgba(70, 35, 10, 0.30) 0.8px, transparent 1.4px),
+    radial-gradient(rgba(255, 228, 180, 0.22) 0.8px, transparent 1.4px),
+    radial-gradient(rgba(90, 50, 20, 0.2) 1.2px, transparent 2px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(60, 30, 10, 0.4));
+  background-size: 6px 6px, 9px 9px, 13px 13px, 100% 100%;
+  background-position: 0 0, 3px 4px, 7px 2px, 0 0;
+  box-shadow: inset 0 8px 18px rgba(40, 20, 5, 0.5), 0 0 0 1px #23130a, 0 16px 34px rgba(0, 0, 0, 0.55);
+}
+/* carved header plank across the top of the board */
+[data-skin="fantasy"] .panel-missions > .panel-head {
+  --title: #f3dca0; --text: #ead6ad; --muted: #cdb184; --line-hot: #8c6538; --cyan: #e6c27a; --on-accent: #2a1709;
+  margin: 0 -20px; padding: 12px 20px; color: var(--text);
+  background-image: var(--plank);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4), inset 0 -2px 0 rgba(0, 0, 0, 0.3);
+}
+[data-skin="fantasy"] .panel-missions > .panel-head h2 { font-size: 1.5rem; font-weight: 800; letter-spacing: 0.1em; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 215, 140, 0.25); }
+[data-skin="fantasy"] .panel-missions > .panel-head .btn-primary { background: linear-gradient(#e8c682, #c39a4b); border-color: #7a5422; color: #2a1709; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 2px 3px rgba(0, 0, 0, 0.4); }
+[data-skin="fantasy"] .panel-missions > .panel-head .btn-primary:hover { background: linear-gradient(#f1d494, #cfa758); }
+[data-skin="fantasy"] .finder { gap: 8px; }
+[data-skin="fantasy"] .missions { gap: 20px; }
+[data-skin="fantasy"] .group-block { gap: 18px; }
+/* group names are little paper slips tacked to the cork */
+[data-skin="fantasy"] .group {
+  align-self: flex-start; margin-top: 4px; padding: 2px 12px; color: var(--title); font-family: var(--f-display); font-weight: 600;
+  text-transform: none; letter-spacing: 0.06em; font-size: 0.9rem;
+  background: var(--paper); border-radius: 2px; box-shadow: 0 2px 4px rgba(20, 10, 0, 0.35); transform: rotate(-1.2deg);
+}
+[data-skin="fantasy"] .group::after { display: none; }
+[data-skin="fantasy"] .group span { color: var(--magenta); font-family: var(--f-mono); }
+
+/* ---- quest notices ---- */
+[data-skin="fantasy"] .mission { padding: 20px 16px 14px 14px; transition: transform 0.2s, box-shadow 0.2s; }
+[data-skin="fantasy"] .missions .mission:nth-child(odd) { transform: rotate(-0.45deg); }
+[data-skin="fantasy"] .missions .mission:nth-child(even) { transform: rotate(0.4deg); }
+[data-skin="fantasy"] .missions .mission:hover { transform: rotate(0deg) translateY(-2px); box-shadow: var(--paper-edge), 0 4px 4px rgba(20, 10, 0, 0.3), 0 16px 26px rgba(20, 10, 0, 0.35); }
+[data-skin="fantasy"] .mission.is-operation { box-shadow: var(--paper-edge), inset 0 5px 0 var(--magenta), var(--drop); padding-top: 24px; }
+[data-skin="fantasy"] .m-title { font-family: var(--f-notice); font-size: 1.22rem; line-height: 1.3; }
+[data-skin="fantasy"] .mission.is-done { opacity: 1; filter: saturate(0.6); }
+[data-skin="fantasy"] .mission.is-done .m-body, [data-skin="fantasy"] .mission.is-done .m-credits { opacity: 0.6; }
+[data-skin="fantasy"] .mission.is-done .m-title { text-decoration-color: var(--magenta); }
+[data-skin="fantasy"] .mission.is-done::after { /* inked "fulfilled" stamp */
+  content: "Fulfilled"; position: absolute; top: 50%; left: 56%; transform: translate(-50%, -50%) rotate(-12deg);
+  padding: 1px 12px; border: 3px double var(--magenta); border-radius: 6px; color: var(--magenta);
+  font-family: var(--f-display); font-weight: 800; font-size: 1.05rem; letter-spacing: 0.18em; text-transform: uppercase;
+  opacity: 0.5; pointer-events: none; mix-blend-mode: multiply;
+}
+[data-skin="fantasy"] .tag { border-radius: 3px; border-width: 1.5px; text-transform: none; letter-spacing: 0.05em; font-size: 0.82rem; padding: 0 7px; }
+[data-skin="fantasy"] .xp-chip { border-radius: 999px; background: rgba(91, 61, 140, 0.10); }
+[data-skin="fantasy"] .m-credits::before, [data-skin="fantasy"] .sub-credits::before, [data-skin="fantasy"] .shop-cost::before { /* gold coin */
+  content: ""; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 5px; vertical-align: -0.05em; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff1b8 0 10%, #d9a92e 45%, #8f6410 100%); box-shadow: 0 0 0 1px rgba(110, 70, 10, 0.5);
+}
+[data-skin="fantasy"] .status-active { animation: none; font-weight: 600; }
+[data-skin="fantasy"] .streak::before { content: "✦ "; }
+
+/* wax seal: an empty ring until you seal the quest */
+[data-skin="fantasy"] .check {
+  clip-path: none; width: 34px; height: 34px; border-radius: 50%;
+  border: 2px dashed color-mix(in srgb, var(--magenta) 65%, transparent); background: rgba(155, 42, 36, 0.04);
+}
+[data-skin="fantasy"] .check:hover { border-style: solid; background: rgba(155, 42, 36, 0.12); box-shadow: none; }
+[data-skin="fantasy"] .is-done .check {
+  border: 0; color: #f6d9c8; border-radius: 48% 52% 50% 46% / 52% 46% 54% 48%;
+  background: radial-gradient(circle at 35% 30%, #d2564a, #9b2a24 55%, #6e1a15);
+  box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.12), inset 0 0 0 5px rgba(255, 180, 160, 0.25), 0 2px 3px rgba(60, 10, 5, 0.45);
+}
+[data-skin="fantasy"] .check.op-progress { min-width: 34px; border-radius: 999px; border-style: solid; color: var(--magenta); font-family: var(--f-mono); font-size: 0.8rem; }
+[data-skin="fantasy"] .check.op-progress:hover { background: rgba(155, 42, 36, 0.04); }
+
+/* raid objectives: an inked checklist on the notice */
+[data-skin="fantasy"] .subtask { border: 0; border-bottom: 1px dashed var(--line-hot); border-radius: 0; background: transparent; padding: 5px 2px; }
+[data-skin="fantasy"] .subtask:last-child { border-bottom: 0; }
+[data-skin="fantasy"] .sub-title { font-family: var(--f-notice); font-size: 1rem; }
 [data-skin="fantasy"] .sub-check { border-radius: 50%; border-color: var(--magenta); }
-[data-skin="fantasy"] .subtask.is-done .sub-check { background: var(--magenta); border-color: var(--magenta); }
-[data-skin="fantasy"] .check.op-progress { color: var(--magenta); font-family: inherit; }
+[data-skin="fantasy"] .subtask.is-done .sub-check { border-color: #6e1a15; background: radial-gradient(circle at 35% 30%, #d2564a, #9b2a24 60%, #6e1a15); }
+
+/* ---- controls ---- */
+[data-skin="fantasy"] .btn-primary, [data-skin="fantasy"] .btn-ghost, [data-skin="fantasy"] .btn-danger, [data-skin="fantasy"] .btn-buy {
+  clip-path: none; border-radius: 4px; text-transform: none; letter-spacing: 0.02em; font-size: 0.9rem;
+}
+[data-skin="fantasy"] .btn-xs { font-size: 0.8rem; }
+[data-skin="fantasy"] .btn-primary { background: linear-gradient(#37785a, #2c6a4e); border-color: #1f4d38; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.3); }
+[data-skin="fantasy"] .btn-primary:hover { background: linear-gradient(#41866a, #317558); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 6px rgba(0, 0, 0, 0.3); }
+[data-skin="fantasy"] .btn-buy:hover:not(:disabled) { box-shadow: 0 2px 6px rgba(90, 60, 20, 0.3); }
+[data-skin="fantasy"] .tabs { border-radius: 4px; overflow: hidden; }
+[data-skin="fantasy"] .tabs button { font-family: var(--f-mono); text-transform: none; letter-spacing: 0.03em; font-size: 0.9rem; }
+[data-skin="fantasy"] .tabs button[aria-selected="true"] { background: color-mix(in srgb, var(--cyan) 16%, transparent); }
+[data-skin="fantasy"] .skill-chip { border-radius: 999px; font-family: inherit; font-size: 0.85rem; padding: 2px 12px; }
+[data-skin="fantasy"] .skill-chip[aria-pressed="true"] { box-shadow: none; }
+[data-skin="fantasy"] .finder-status { font-family: inherit; font-size: 0.85rem; }
+[data-skin="fantasy"] .kind { border-radius: var(--radius); }
+[data-skin="fantasy"] .mform-title { color: var(--magenta); font-size: 1rem; letter-spacing: 0.1em; text-transform: none; }
+[data-skin="fantasy"] input:focus, [data-skin="fantasy"] select:focus { box-shadow: 0 0 0 1px var(--cyan); }
+[data-skin="fantasy"] .rung-name { letter-spacing: 0.02em; }
+[data-skin="fantasy"] .rung-badge { letter-spacing: 0.05em; }
+[data-skin="fantasy"] .toast { font-family: var(--f-notice); font-size: 1.02rem; border: 1px solid var(--line-hot); }
+[data-skin="fantasy"] .toast-ok { color: var(--green); }
+[data-skin="fantasy"] .toast-err { color: var(--magenta); }
+
+@media (max-width: 640px) {
+  [data-skin="fantasy"] .panel-missions { border-width: 8px; padding: 0 12px 18px; }
+  [data-skin="fantasy"] .panel-missions > .panel-head { margin: 0 -12px; padding: 10px 12px; }
+  [data-skin="fantasy"] .side .panel:nth-child(n) { transform: none; }
+  [data-skin="fantasy"] .missions .mission:nth-child(odd) { transform: rotate(-0.25deg); }
+  [data-skin="fantasy"] .missions .mission:nth-child(even) { transform: rotate(0.25deg); }
+  [data-skin="fantasy"] .brand { width: 100%; }
+}
+[data-skin="fantasy"] .brand-kicker { text-wrap: balance; }
