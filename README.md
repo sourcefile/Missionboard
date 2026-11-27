@@ -2,7 +2,7 @@
 
 A personal task dashboard with game mechanics. Finish missions to earn **credits** you can spend on leisure activities, and **XP** that levels up your skills.
 
-- Missions can be **timed** (a duration or a fixed start and end), **daily**, **weekly**, or **extra** (no deadline).
+- Missions can be **timed** (a duration or a fixed start and end), **daily**, **weekly**, **operations** (called **raids** in the fantasy look: a mission split into subtasks), or **extra** (no deadline).
 - Each mission pays out credits and can train **up to 3 skills** with XP.
 - The **leisure shop** lists activities with a credit price. Redeeming one deducts the credits and records it in the credit log.
 - Two looks: **Cyberpunk** and **Fantasy**.
@@ -16,9 +16,20 @@ A personal task dashboard with game mechanics. Finish missions to earn **credits
 | Timed · start/end | Fixed start and end time (flagged *Today* / *Live now* / *Overdue*) | Done once |
 | Daily | Every day, optional duration | Done for today. Refreshes at midnight and can be completed (and paid out) again |
 | Weekly | Every week, optional duration | Done for this week. Refreshes on the first day of the week (Monday by default) |
+| Operation / Raid | No deadline; made of up to 20 subtasks | Done once every subtask is done (see below) |
 | Extra | No deadline | Done once |
 
 Daily and weekly missions show a **streak**: how many days or weeks in a row you completed them. Every completion is recorded in the credit log, so credits and XP you earned stay earned, even if you delete the mission later.
+
+## Operations and raids
+
+An **operation** (cyberpunk) or **raid** (fantasy) is a bigger mission split into **subtasks**:
+
+- Each subtask has its own credit reward and can train a skill. Tick a subtask off and it pays out right away.
+- The operation's own credits and XP are a **completion bonus**. Finishing the last subtask pays the bonus and marks the operation complete. The suggested bonus is a quarter of what the subtasks pay together (at least 10).
+- Reopening one subtask takes back its payout, and the bonus too if the operation was finished. Reopening a finished operation takes back every subtask payout and the bonus. Both are blocked if the credits are already spent.
+- Editing an operation keeps the progress of subtasks you keep. If you remove the last unfinished subtask, the operation completes and pays its bonus.
+- Search also matches subtask titles, and the skill filter counts XP from subtasks.
 
 ## Ranks
 
@@ -54,6 +65,7 @@ Switch between **Cyberpunk** (neon HUD) and **Fantasy** (parchment quest board) 
 | Skill levels | Level 1 at 100 XP, 2 at 300, 3 at 600, 4 at 1000 (`50 × L × (L+1)`) | `xpForLevel` |
 | Operator / hero level (header) | Same curve, using total XP across all skills | `src/client/App.tsx` |
 | Reopening a finished mission | Takes back its credits; blocked if they're already spent | `src/server/app.ts` |
+| Suggested operation / raid bonus | A quarter of the subtasks' total, at least 10 | `src/shared/game.ts` → `suggestBonus` |
 | Deleting a mission | Always allowed; earned credits and XP stay in the log | same |
 | Example ranks | Four ranks (see above), added once | `src/shared/ranks.ts` → `DEFAULT_RANKS` |
 | Starter skills and shop items | Focus, Fitness, Learning, Creativity; four leisure items | `src/server/db.ts` (only on a brand-new database) |

@@ -209,6 +209,112 @@ describe("upgrading a first-version database", () => {
     expect(s.tasks.map((t) => [t.title, t.done])).toEqual([["Report", true], ["Tidy", false]]);
     expect(s.skills).toHaveLength(1); // not re-seeded
     expect(s.ranks).toHaveLength(4); // example ranks added
-    expect(store.addTask({ title: "Stretch", kind: "daily", credits: 5, durationMin: null, day: null, start: null, end: null, xp: [] }).kind).toBe("daily");
+    expect(store.addTask({ title: "Stretch", kind: "daily", credits: 5, durationMin: null, day: null, start: null, end: null, xp: [], subtasks: [] }).kind).toBe("daily");
+  });
+});
+
+describe("operations (missions with subtasks)", () => {
+  let fitnessId: number;
+  const operation = (extra: object = {}) => ({
+    title: "Launch website",
+    kind: "operation",
+    credits: 50, // bonus
+    xp: [{ skillId, amount: 30 }], // bonus XP
+    subtasks: [
+      { title: "Write copy", credits: 20, xp: [{ skillId, amount: 15 }] },
+      { title: "Design pages", credits: 30, xp: [] },
+      { title: "Go live", credits: 10, xp: [{ skillId: fitnessId, amount: 5 }] },
+    ],
+    ...extra,
+  });
+  beforeEach(async () => {
+    fitnessId = (await request(app).post("/api/skills").send({ name: "Fitness" })).body.id;
+  });
+  const subIds = (body: { subtasks: { id: number }[] }) => body.subtasks.map((s) => s.id);
+
+  it("pays each subtask, then the bonus, and completes the operation with the last one", async () => {
+    const { body } = await request(app).post("/api/tasks").send(operation()).expect(201);
+    expect(body.subtasks.map((s: { title: string; done: boolean }) => [s.title, s.done])).toEqual([["Write copy", false], ["Design pages", false], ["Go live", false]]);
+    const [a, b, c] = subIds(body);
+
+    let s = await request(app).post(`/api/tasks/${body.id}/subtasks/${a}/complete`).expect(200);
+    expect(s.body.balance).toBe(20);
+    expect(s.body.skillXp).toEqual({ [skillId]: 15 });
+    expect(s.body.tasks[0].done).toBe(false);
+    expect(s.body.completions[0]).toMatchObject({ title: "Launch website › Write copy", credits: 20, subtaskId: a });
+
+    await request(app).post(`/api/tasks/${body.id}/subtasks/${a}/complete`).expect(200); // twice pays once
+    await request(app).post(`/api/tasks/${body.id}/subtasks/${b}/complete`).expect(200);
+    s = await request(app).post(`/api/tasks/${body.id}/subtasks/${c}/complete`).expect(200);
+    expect(s.body.balance).toBe(20 + 30 + 10 + 50);
+    expect(s.body.skillXp).toEqual({ [skillId]: 45, [fitnessId]: 5 });
+    expect(s.body.tasks[0].done).toBe(true);
+    expect(s.body.completions[0]).toMatchObject({ title: "Launch website · bonus", credits: 50, subtaskId: null });
+  });
+
+  it("reopening a subtask of a finished operation takes back its payout and the bonus", async () => {
+    const { body } = await request(app).post("/api/tasks").send(operation()).expect(201);
+    for (const id of subIds(body)) await request(app).post(`/api/tasks/${body.id}/subtasks/${id}/complete`);
+    const s = await request(app).post(`/api/tasks/${body.id}/subtasks/${subIds(body)[1]}/reopen`).expect(200);
+    expect(s.body.balance).toBe(30);
+    expect(s.body.tasks[0].done).toBe(false);
+    expect(s.body.tasks[0].subtasks.map((x: { done: boolean }) => x.done)).toEqual([true, false, true]);
+  });
+
+  it("reopening the whole operation takes back everything, unless the credits are spent", async () => {
+    const { body } = await request(app).post("/api/tasks").send(operation()).expect(201);
+    for (const id of subIds(body)) await request(app).post(`/api/tasks/${body.id}/subtasks/${id}/complete`);
+    const reward = await request(app).post("/api/rewards").send({ name: "Film", cost: 100 });
+    await request(app).post(`/api/rewards/${reward.body.id}/redeem`).expect(200);
+    await request(app).post(`/api/tasks/${body.id}/reopen`).expect(409);
+
+    const other = await request(app).post("/api/tasks").send(operation({ title: "Move house" })).expect(201);
+    for (const id of subIds(other.body)) await request(app).post(`/api/tasks/${other.body.id}/subtasks/${id}/complete`);
+    const s = await request(app).post(`/api/tasks/${other.body.id}/reopen`).expect(200);
+    expect(s.body.balance).toBe(10);
+    const moved = s.body.tasks.find((t: { id: number }) => t.id === other.body.id);
+    expect(moved.done).toBe(false);
+    expect(moved.subtasks.every((x: { done: boolean }) => !x.done)).toBe(true);
+  });
+
+  it("completing the operation directly finishes the remaining subtasks", async () => {
+    const { body } = await request(app).post("/api/tasks").send(operation()).expect(201);
+    await request(app).post(`/api/tasks/${body.id}/subtasks/${subIds(body)[0]}/complete`);
+    const s = await request(app).post(`/api/tasks/${body.id}/complete`).expect(200);
+    expect(s.body.balance).toBe(110);
+    expect(s.body.tasks[0].done).toBe(true);
+  });
+
+  it("keeps progress when subtasks are edited, and pays the bonus if only finished ones remain", async () => {
+    const { body } = await request(app).post("/api/tasks").send(operation()).expect(201);
+    const [a, b] = body.subtasks;
+    await request(app).post(`/api/tasks/${body.id}/subtasks/${a.id}/complete`);
+    await request(app).post(`/api/tasks/${body.id}/subtasks/${b.id}/complete`);
+    const edited = await request(app)
+      .put(`/api/tasks/${body.id}`)
+      .send(operation({ subtasks: [{ ...a, title: "Write all copy" }, b] }))
+      .expect(200);
+    expect(edited.body.done).toBe(true); // "Go live" removed, everything left is done
+    expect(edited.body.subtasks.map((x: { title: string; done: boolean }) => [x.title, x.done])).toEqual([["Write all copy", true], ["Design pages", true]]);
+    const s = await request(app).get("/api/state");
+    expect(s.body.balance).toBe(100);
+  });
+
+  it("validates subtasks and protects skills they use", async () => {
+    const none = await request(app).post("/api/tasks").send(operation({ subtasks: [] })).expect(400);
+    expect(none.body.error).toMatch(/at least one subtask/);
+    const unnamed = await request(app).post("/api/tasks").send(operation({ subtasks: [{ title: " ", credits: 5, xp: [] }] })).expect(400);
+    expect(unnamed.body.error).toMatch(/subtask 1 a name/);
+    await request(app).post("/api/tasks").send(operation({ xp: [] })).expect(201);
+    await request(app).delete(`/api/skills/${fitnessId}`).expect(409);
+  });
+
+  it("removing an operation keeps what its subtasks paid", async () => {
+    const { body } = await request(app).post("/api/tasks").send(operation()).expect(201);
+    await request(app).post(`/api/tasks/${body.id}/subtasks/${subIds(body)[0]}/complete`);
+    await request(app).delete(`/api/tasks/${body.id}`).expect(204);
+    const s = await request(app).get("/api/state");
+    expect(s.body.balance).toBe(20);
+    expect(s.body.completions[0]).toMatchObject({ taskId: null, subtaskId: null });
   });
 });
