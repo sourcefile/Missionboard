@@ -10,6 +10,7 @@ import "@fontsource/cinzel/800.css";
 import "@fontsource/alegreya/400.css";
 import "@fontsource/alegreya/600.css";
 import "@fontsource/alegreya-sc/500.css";
+import "@fontsource/im-fell-english/400.css";
 import "./styles.css";
 import { App } from "./App";
 import { applySkin, loadSkin } from "./skin";

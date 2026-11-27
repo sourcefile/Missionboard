@@ -54,19 +54,19 @@ export const SKINS: Record<SkinName, Skin> = {
   fantasy: {
     name: "fantasy",
     label: "Fantasy",
-    kicker: "~ the adventurer's ledger ~",
+    kicker: "~ Adventurers' Guild · notices & bounties ~",
     title: "Quest Board",
     currency: "GP",
     currencyName: "Gold",
     missions: "Quests",
     mission: "quest",
-    newMission: "+ New quest",
+    newMission: "+ Post a quest",
     level: "Hero level",
     lv: "Lv",
     shop: "The tavern",
     redeem: "Buy",
     log: "Treasury",
-    boot: "Unrolling the quest board…",
+    boot: "Pinning notices to the quest board…",
     completed: (c) => `Quest complete! +${c} gold`,
     levelUp: "Level up!",
     rankUp: "You have risen to",
@@ -91,7 +91,7 @@ export function loadSkin(): SkinName {
 
 export function applySkin(name: SkinName) {
   document.documentElement.dataset.skin = name;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", name === "fantasy" ? "#efe2c2" : "#05060b");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", name === "fantasy" ? "#3a2414" : "#05060b");
   try {
     localStorage.setItem(KEY, name);
   } catch {
