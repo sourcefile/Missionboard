@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { BoardState, Task } from "../shared/game";
-import { isRecurring, levelOf, levelProgress, sortKey, timingState } from "../shared/game";
+import type { BoardState, Subtask, Task, XpGrant } from "../shared/game";
+import { isOperation, isRecurring, levelOf, levelProgress, operationProgress, sortKey, taskSkillIds, timingState } from "../shared/game";
 import { api } from "./api";
 import { fmtDay, resetLabel, stateLabel, whenLabel } from "./format";
 import { MissionForm } from "./MissionForm";
@@ -9,21 +9,24 @@ import { progressFrom, rankStatus } from "../shared/ranks";
 import { RanksPanel, rankName } from "./Ranks";
 import { ShopPanel } from "./Shop";
 
-type Filter = "open" | "routine" | "timed" | "extra" | "done";
-const FILTERS: [Filter, string][] = [["open", "Active"], ["routine", "Daily & weekly"], ["timed", "Timed"], ["extra", "Extra"], ["done", "Completed"]];
+type Filter = "open" | "routine" | "timed" | "operation" | "extra" | "done";
+/** Tab labels; null = use the look's name for operations / raids. */
+const FILTERS: [Filter, string | null][] = [["open", "Active"], ["routine", "Daily & weekly"], ["timed", "Timed"], ["operation", null], ["extra", "Extra"], ["done", "Completed"]];
 const isTimed = (t: Task) => t.kind === "duration" || t.kind === "window";
-const GROUPS: [string, (t: Task) => boolean][] = [
+const GROUPS: [string | null, (t: Task) => boolean][] = [
   ["Daily", (t) => t.kind === "daily"],
   ["Weekly", (t) => t.kind === "weekly"],
   ["Timed", isTimed],
+  [null, (t) => t.kind === "operation"],
   ["Extra", (t) => t.kind === "extra"],
 ];
-const TAG: Record<Task["kind"], [string, string]> = {
+const TAG: Record<Task["kind"], [string | null, string]> = {
   duration: ["Timed", "tag-timed"],
   window: ["Timed", "tag-timed"],
   extra: ["Extra", "tag-extra"],
   daily: ["Daily", "tag-daily"],
   weekly: ["Weekly", "tag-weekly"],
+  operation: [null, "tag-operation"],
 };
 const readFilter = (): Filter => {
   try {
@@ -110,6 +113,7 @@ export function App() {
         (filter === "open" ||
           (filter === "routine" && isRecurring(m.kind)) ||
           (filter === "timed" && isTimed(m)) ||
+          (filter === "operation" && isOperation(m.kind)) ||
           (filter === "extra" && m.kind === "extra")),
   );
   // Search and skill filter narrow whichever tab is open.
@@ -117,25 +121,27 @@ export function App() {
   const needle = query.trim().toLowerCase();
   const narrowing = needle !== "" || picked.length > 0;
   const tabCount = list.length;
-  if (needle) list = list.filter((m) => m.title.toLowerCase().includes(needle));
-  if (picked.length) list = list.filter((m) => m.xp.some((g) => picked.includes(g.skillId)));
+  if (needle) list = list.filter((m) => m.title.toLowerCase().includes(needle) || m.subtasks.some((s) => s.title.toLowerCase().includes(needle)));
+  if (picked.length) list = list.filter((m) => taskSkillIds(m).some((id) => picked.includes(id)));
   const clearFinder = () => { setQuery(""); setSkillFilter([]); };
   const toggleSkill = (id: number) => setSkillFilter((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   list = filter === "done" ? list.sort((a, b) => (b.doneAt ?? "").localeCompare(a.doneAt ?? "")) : list.sort(byTime);
 
-  const complete = async (m: Task) => {
+  /** Pays something out and celebrates: rank-up beats level-up beats the plain message. */
+  const payout = async (call: () => Promise<BoardState>, message: (next: BoardState) => string) => {
     const before = new Map(xp);
-    const ups = m.xp
-      .filter((g) => levelOf((before.get(g.skillId) ?? 0) + g.amount) > levelOf(before.get(g.skillId) ?? 0))
-      .map((g) => `${skillName(g.skillId)} → ${t.lv} ${levelOf((before.get(g.skillId) ?? 0) + g.amount)}`);
     try {
-      const next = await api.complete(m.id);
+      const next = await call();
       setState(next);
+      const nextXp = new Map(Object.entries(next.skillXp).map(([k, v]) => [Number(k), v]));
+      const ups = [...nextXp]
+        .filter(([id, amount]) => levelOf(amount) > levelOf(before.get(id) ?? 0))
+        .map(([id, amount]) => `${skillName(id)} → ${t.lv} ${levelOf(amount)}`);
       const nextRanks = [...next.ranks].sort((a, b) => a.position - b.position);
       const after = rankStatus(nextRanks, progressFrom(next.skillXp, next.skills.map((s) => s.id))).current;
       const promoted = after > rank.current && nextRanks[after];
       setToast({
-        text: promoted ? `${t.rankUp} ${rankName(promoted, skinName)}` : ups.length ? `${t.levelUp} ${ups.join(", ")}` : t.completed(m.credits),
+        text: promoted ? `${t.rankUp} ${rankName(promoted, skinName)}` : ups.length ? `${t.levelUp} ${ups.join(", ")}` : message(next),
         tone: "ok",
       });
       setPulse((n) => n + 1);
@@ -143,22 +149,39 @@ export function App() {
       setToast({ text: (e as Error).message, tone: "err" });
     }
   };
+  const complete = (m: Task) => payout(() => api.complete(m.id), () => t.completed(m.credits));
+  const completeSubtask = (m: Task, s: Subtask) =>
+    payout(
+      () => api.completeSubtask(m.id, s.id),
+      (next) => (next.tasks.find((x) => x.id === m.id)?.done ? t.operationDone(m.credits) : t.subtaskDone(s.credits)),
+    );
+  const xpChips = (grants: XpGrant[]) =>
+    grants.map((g) => <span key={g.skillId} className="xp-chip">+{g.amount} XP <b>{skillName(g.skillId)}</b></span>);
 
   const card = (m: Task) => {
     const ts = timingState(m);
     const asking = confirm === `t${m.id}`;
-    const [tagText, tagClass] = TAG[m.kind];
+    const [tagLabel, tagClass] = TAG[m.kind];
+    const tagText = tagLabel ?? t.operation;
     const recurring = isRecurring(m.kind);
+    const op = isOperation(m.kind);
+    const prog = operationProgress(m);
     return (
-      <article key={m.id} className={`mission ${m.done ? "is-done" : ""} state-${ts} ${recurring ? "is-recurring" : ""}`}>
-        <button
-          className="check"
-          aria-label={m.done ? `Reopen ${m.title}` : `Complete ${m.title}`}
-          title={m.done ? "Reopen" : "Complete"}
-          onClick={() => (m.done ? run(() => api.reopen(m.id), `${t.mission[0]!.toUpperCase()}${t.mission.slice(1)} reopened`) : complete(m))}
-        >
-          {m.done ? "✓" : ""}
-        </button>
+      <article key={m.id} className={`mission ${m.done ? "is-done" : ""} state-${ts} ${recurring ? "is-recurring" : ""} ${op ? "is-operation" : ""}`}>
+        {op && !m.done ? (
+          <span className="check op-progress" role="img" aria-label={`${prog.done} of ${prog.total} subtasks done`} title="Finish every subtask to complete it">
+            {prog.done}/{prog.total}
+          </span>
+        ) : (
+          <button
+            className="check"
+            aria-label={m.done ? `Reopen ${m.title}` : `Complete ${m.title}`}
+            title={m.done ? (op ? "Reopen, taking back every subtask payout and the bonus" : "Reopen") : "Complete"}
+            onClick={() => (m.done ? run(() => api.reopen(m.id), `${op ? t.operation : `${t.mission[0]!.toUpperCase()}${t.mission.slice(1)}`} reopened`) : complete(m))}
+          >
+            {m.done ? "✓" : ""}
+          </button>
+        )}
         <div className="m-body">
           <div className="m-title">{m.title}</div>
           <div className="m-meta">
@@ -168,16 +191,38 @@ export function App() {
             {recurring && m.done && <span className="status status-reset">{resetLabel(m, state.weekStart)}</span>}
             {m.streak > 1 && <span className="streak" title={`${m.streak} ${m.kind === "daily" ? "days" : "weeks"} in a row`}>Streak {m.streak}</span>}
           </div>
+          {op && (
+            <ol className="subtasks" aria-label={`${m.title} subtasks`}>
+              {m.subtasks.map((s) => (
+                <li key={s.id} className={`subtask ${s.done ? "is-done" : ""}`}>
+                  <button
+                    className="sub-check"
+                    aria-label={s.done ? `Reopen ${s.title}` : `Complete ${s.title}`}
+                    title={s.done ? "Reopen" : "Complete"}
+                    onClick={() => (s.done ? run(() => api.reopenSubtask(m.id, s.id), "Subtask reopened") : completeSubtask(m, s))}
+                  >
+                    {s.done ? "✓" : ""}
+                  </button>
+                  <span className="sub-title">{s.title}</span>
+                  <span className="sub-rewards">
+                    {xpChips(s.xp)}
+                    <span className="sub-credits"><span className="cr">{t.currency}</span>+{s.credits}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
           {m.xp.length > 0 && (
             <div className="m-xp">
-              {m.xp.map((g) => (
-                <span key={g.skillId} className="xp-chip">+{g.amount} XP <b>{skillName(g.skillId)}</b></span>
-              ))}
+              {op && <span className="bonus-label">Bonus</span>}
+              {xpChips(m.xp)}
             </div>
           )}
         </div>
         <div className="m-side">
-          <div className="m-credits"><span className="cr">{t.currency}</span>+{m.credits}</div>
+          <div className="m-credits" title={op ? `Bonus when every subtask is done` : undefined}>
+            <span className="cr">{op ? `bonus ${t.currency}` : t.currency}</span>+{m.credits}
+          </div>
           <div className="m-actions">
             {asking ? (
               <>
@@ -245,7 +290,7 @@ export function App() {
             <div className="head-actions">
               <div className="tabs" role="tablist">
                 {FILTERS.map(([f, label]) => (
-                  <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)}>{label}</button>
+                  <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)}>{label ?? t.operations}</button>
                 ))}
               </div>
               <button className="btn-primary" onClick={() => setEditing("new")}>{t.newMission}</button>
@@ -284,6 +329,7 @@ export function App() {
             <MissionForm
               task={editing === "new" ? null : editing}
               noun={t.mission}
+              operationName={t.operation}
               currency={t.currency}
               skills={state.skills}
               onCancel={() => setEditing(null)}
@@ -310,11 +356,12 @@ export function App() {
                 <strong>{filter === "done" ? `No completed ${t.mission}s yet` : `No active ${t.mission}s here`}</strong>
                 {filter === "done"
                   ? `Hit the square next to a ${t.mission} when you finish it to collect its ${t.currencyName.toLowerCase()} and XP.`
-                  : `Add one with “${t.newMission.replace("+ ", "")}”. Timed ones have a duration or a start and end time, daily and weekly ones come back every day or week, and extra ones have no deadline.`}
+                  : `Add one with “${t.newMission.replace("+ ", "")}”. Timed ones have a duration or a start and end time, daily and weekly ones come back every day or week, ${t.operations.toLowerCase()} are split into subtasks with a bonus at the end, and extra ones have no deadline.`}
               </div>
             ) : filter === "open" || filter === "routine" ? (
-              GROUPS.map(([label, match]) => {
+              GROUPS.map(([groupLabel, match]) => {
                 const rows = list.filter(match);
+                const label = groupLabel ?? t.operations;
                 return rows.length === 0 ? null : (
                   <div key={label} className="group-block">
                     <div className="group">{label} <span>{rows.length}</span></div>

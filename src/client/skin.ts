@@ -19,6 +19,11 @@ export interface Skin {
   completed: (credits: number) => string;
   levelUp: string;
   rankUp: string;
+  /** The mission type with subtasks. */
+  operation: string;
+  operations: string;
+  subtaskDone: (credits: number) => string;
+  operationDone: (bonus: number) => string;
 }
 
 export const SKINS: Record<SkinName, Skin> = {
@@ -41,6 +46,10 @@ export const SKINS: Record<SkinName, Skin> = {
     completed: (c) => `Mission complete. +${c} credits`,
     levelUp: "Level up!",
     rankUp: "Rank up! You're now",
+    operation: "Operation",
+    operations: "Operations",
+    subtaskDone: (c) => `Objective cleared. +${c} credits`,
+    operationDone: (b) => `Operation complete! Bonus +${b} credits`,
   },
   fantasy: {
     name: "fantasy",
@@ -61,6 +70,10 @@ export const SKINS: Record<SkinName, Skin> = {
     completed: (c) => `Quest complete! +${c} gold`,
     levelUp: "Level up!",
     rankUp: "You have risen to",
+    operation: "Raid",
+    operations: "Raids",
+    subtaskDone: (c) => `Foe vanquished! +${c} gold`,
+    operationDone: (b) => `Raid complete! Bonus +${b} gold`,
   },
 };
 

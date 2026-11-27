@@ -5,7 +5,7 @@ import { App } from "./App";
 import type { BoardState, Task } from "../shared/game";
 import { DEFAULT_RANKS } from "../shared/ranks";
 
-const base = { durationMin: null, day: null, start: null, end: null, xp: [], done: false, doneAt: null, streak: 0, createdAt: "2026-11-26T10:00:00Z" };
+const base = { durationMin: null, day: null, start: null, end: null, xp: [], subtasks: [], done: false, doneAt: null, streak: 0, createdAt: "2026-11-26T10:00:00Z" };
 const task = (t: Partial<Task> & Pick<Task, "id" | "title" | "kind" | "credits">): Task => ({ ...base, ...t });
 
 const state: BoardState = {
@@ -104,9 +104,78 @@ describe("dashboard", () => {
     expect(fitness.getAttribute("aria-pressed")).toBe("false");
   });
 
+  it("shows an operation's subtasks, named Raid in the fantasy look", async () => {
+    const op = task({
+      id: 4, title: "Launch website", kind: "operation", credits: 50, xp: [{ skillId: 2, amount: 30 }],
+      subtasks: [
+        { id: 11, title: "Write copy", credits: 20, xp: [{ skillId: 1, amount: 15 }], done: true, doneAt: "2026-11-26T11:00:00Z" },
+        { id: 12, title: "Go live", credits: 10, xp: [], done: false, doneAt: null },
+      ],
+    });
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ ...state, tasks: [...state.tasks, op] }), { headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    expect(await screen.findByText("Launch website")).toBeTruthy();
+    expect(screen.getByText("Operation", { selector: ".tag" })).toBeTruthy();
+    expect(screen.getByText("Operations", { selector: ".group" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "1 of 2 subtasks done" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Complete Go live" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/tasks/4/subtasks/12/complete", expect.objectContaining({ method: "POST" }));
+
+    // Search finds subtasks; the skill filter counts subtask XP.
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search missions by title" }), { target: { value: "go live" } });
+    expect(screen.getByText("Launch website")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Fantasy" }));
+    expect(screen.getByText("Raid", { selector: ".tag" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Raids" })).toBeTruthy();
+  });
+
+  it("builds an operation with subtasks in the form", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(state), { headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    await screen.findByText("Write report");
+    fireEvent.click(screen.getByRole("button", { name: "+ New mission" }));
+    fireEvent.change(screen.getByPlaceholderText("e.g. Finish quarterly report"), { target: { value: "Launch website" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Operation/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Subtask 1" }), { target: { value: "Write copy" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "CR for subtask 1" }), { target: { value: "30" } });
+    const subSkills = screen.getByRole("group", { name: "Skills for subtask 1, up to 3" });
+    fireEvent.click(within(subSkills).getByRole("button", { name: "Focus" }));
+    fireEvent.click(within(subSkills).getByRole("button", { name: "Fitness" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "XP for Fitness on subtask 1" }), { target: { value: "25" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Subtask 2" }), { target: { value: "Go live" } });
+    expect(screen.getByText(/Suggested: 10 CR/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Add mission" }));
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([u, i]) => u === "/api/tasks" && i?.method === "POST")).toBe(true));
+    const [, init] = fetchMock.mock.calls.find(([u, i]) => u === "/api/tasks" && i?.method === "POST")!;
+    expect(JSON.parse(String(init!.body))).toMatchObject({
+      kind: "operation",
+      credits: 10,
+      subtasks: [{ title: "Write copy", credits: 30, xp: [{ skillId: 1, amount: 10 }, { skillId: 2, amount: 25 }] }, { title: "Go live", credits: 10, xp: [] }],
+    });
+  });
+
   it("explains when the server can't be reached", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
     render(<App />);
     expect(await screen.findByText(/Can't reach the Mission Board server/)).toBeTruthy();
+  });
+});
+
+describe("subtask skills", () => {
+  it("allow at most three skills per subtask", async () => {
+    const many = { ...state, skills: [1, 2, 3, 4].map((id) => ({ id, name: `Skill ${id}` })) };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(many), { headers: { "Content-Type": "application/json" } })));
+    render(<App />);
+    await screen.findByText("Write report");
+    fireEvent.click(screen.getByRole("button", { name: "+ New mission" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Operation/ }));
+    const g = screen.getByRole("group", { name: "Skills for subtask 1, up to 3" });
+    for (const n of [1, 2, 3]) fireEvent.click(within(g).getByRole("button", { name: `Skill ${n}` }));
+    expect((within(g).getByRole("button", { name: "Skill 4" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(g).getByRole("button", { name: /Skill 2/ }));
+    expect((within(g).getByRole("button", { name: "Skill 4" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

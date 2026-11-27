@@ -1,11 +1,15 @@
 // Game rules shared by the API and the dashboard.
 import type { Rank } from "./ranks.js";
 
-export type TaskKind = "duration" | "window" | "extra" | "daily" | "weekly";
+export type TaskKind = "duration" | "window" | "extra" | "daily" | "weekly" | "operation";
 export type RecurringKind = "daily" | "weekly";
 
 export const isRecurring = (kind: TaskKind): kind is RecurringKind => kind === "daily" || kind === "weekly";
 export const isTimed = (kind: TaskKind) => kind === "duration" || kind === "window";
+/** Operations (cyberpunk) / raids (fantasy): a mission made of subtasks, each with its own payout, plus a bonus when all are done. */
+export const isOperation = (kind: TaskKind) => kind === "operation";
+
+export const MAX_SUBTASKS = 20;
 
 export interface XpGrant {
   skillId: number;
@@ -21,9 +25,27 @@ export interface TaskInput {
   start?: string | null; // ISO date-time, window missions
   end?: string | null; // ISO date-time, window missions
   xp: XpGrant[];
+  /** Operations only: the steps. For operations, `credits` and `xp` are the bonus paid once every step is done. */
+  subtasks?: SubtaskInput[];
+}
+
+export interface SubtaskInput {
+  /** Set when editing an existing subtask, so its progress is kept. */
+  id?: number;
+  title: string;
+  credits: number;
+  xp: XpGrant[];
+}
+
+export interface Subtask extends SubtaskInput {
+  id: number;
+  done: boolean;
+  doneAt: string | null;
 }
 
 export interface Task extends Required<TaskInput> {
+  /** Empty for every kind except operations. */
+  subtasks: Subtask[];
   id: number;
   /** One-off missions: completed at all. Daily/weekly: completed in the current day/week. */
   done: boolean;
@@ -37,6 +59,8 @@ export interface Task extends Required<TaskInput> {
 export interface Completion {
   id: number;
   taskId: number | null;
+  /** Set when this payout is for one step of an operation. */
+  subtaskId: number | null;
   title: string;
   credits: number;
   xp: XpGrant[];
@@ -100,8 +124,24 @@ export function levelProgress(xp: number) {
 
 /** Suggested credits: 1 credit per 2 minutes of planned work, minimum 5; missions without a time default to 10. */
 export function suggestCredits(kind: TaskKind, minutes: number): number {
-  if (kind === "extra" || (isRecurring(kind) && !(minutes > 0))) return 10;
+  if (kind === "extra" || kind === "operation" || (isRecurring(kind) && !(minutes > 0))) return 10;
   return Math.max(5, Math.round(minutes / 2));
+}
+
+/** Suggested operation bonus: a quarter of what the subtasks pay together, at least 10. */
+export function suggestBonus(subtaskCredits: number[]): number {
+  const sum = subtaskCredits.reduce((a, b) => a + (Number.isFinite(b) && b > 0 ? b : 0), 0);
+  return Math.max(10, Math.round(sum / 4));
+}
+
+/** Subtasks done / total. */
+export function operationProgress(task: Pick<Task, "subtasks">): { done: number; total: number } {
+  return { done: task.subtasks.filter((s) => s.done).length, total: task.subtasks.length };
+}
+
+/** Every skill a mission can give XP to, including its subtasks'. */
+export function taskSkillIds(task: Pick<Task, "xp" | "subtasks">): number[] {
+  return [...new Set([...task.xp, ...task.subtasks.flatMap((s) => s.xp)].map((g) => g.skillId))];
 }
 
 export function minutesBetween(start: string, end: string): number {
@@ -211,10 +251,10 @@ export function validateTask(raw: unknown, knownSkills?: Set<number>): Result<Re
   if (!title) return { ok: false, error: "Give the mission a name." };
   if (title.length > 140) return { ok: false, error: "Keep the name under 140 characters." };
   const kind = r.kind;
-  if (kind !== "duration" && kind !== "window" && kind !== "extra" && kind !== "daily" && kind !== "weekly") return { ok: false, error: "Pick a mission type." };
+  if (kind !== "duration" && kind !== "window" && kind !== "extra" && kind !== "daily" && kind !== "weekly" && kind !== "operation") return { ok: false, error: "Pick a mission type." };
   if (!isInt(r.credits) || r.credits < 0 || r.credits > 10000) return { ok: false, error: "Credits must be a whole number from 0 to 10000." };
 
-  const out: Required<TaskInput> = { title, kind, credits: r.credits, durationMin: null, day: null, start: null, end: null, xp: [] };
+  const out: Required<TaskInput> = { title, kind, credits: r.credits, durationMin: null, day: null, start: null, end: null, xp: [], subtasks: [] };
 
   if (kind === "duration") {
     if (!isInt(r.durationMin) || r.durationMin < 1 || r.durationMin > 24 * 60 * 7) return { ok: false, error: "Set a duration of at least 1 minute." };
@@ -235,16 +275,48 @@ export function validateTask(raw: unknown, knownSkills?: Set<number>): Result<Re
     out.durationMin = r.durationMin;
   }
 
-  const xpRaw = Array.isArray(r.xp) ? r.xp : [];
+  const xp = validateXp(r.xp, knownSkills, "mission");
+  if (!xp.ok) return xp;
+  out.xp = xp.value;
+
+  if (kind === "operation") {
+    const subsRaw = Array.isArray(r.subtasks) ? (r.subtasks as unknown[]) : [];
+    if (subsRaw.length < 1) return { ok: false, error: "Add at least one subtask." };
+    if (subsRaw.length > MAX_SUBTASKS) return { ok: false, error: `An operation can have at most ${MAX_SUBTASKS} subtasks.` };
+    const ids = new Set<number>();
+    for (const [i, raw] of subsRaw.entries()) {
+      if (typeof raw !== "object" || raw === null) return { ok: false, error: `Subtask ${i + 1} is missing.` };
+      const sr = raw as Record<string, unknown>;
+      const stitle = typeof sr.title === "string" ? sr.title.trim() : "";
+      if (!stitle) return { ok: false, error: `Give subtask ${i + 1} a name.` };
+      if (stitle.length > 140) return { ok: false, error: `Keep the name of subtask ${i + 1} under 140 characters.` };
+      if (!isInt(sr.credits) || sr.credits < 0 || sr.credits > 10000) return { ok: false, error: `Subtask ${i + 1}: credits must be a whole number from 0 to 10000.` };
+      const sxp = validateXp(sr.xp, knownSkills, "subtask");
+      if (!sxp.ok) return { ok: false, error: `Subtask ${i + 1}: ${sxp.error}` };
+      const sub: SubtaskInput = { title: stitle, credits: sr.credits, xp: sxp.value };
+      if (sr.id != null) {
+        if (!isInt(sr.id) || sr.id < 1 || ids.has(sr.id)) return { ok: false, error: `Subtask ${i + 1} has an invalid id.` };
+        ids.add(sr.id);
+        sub.id = sr.id;
+      }
+      out.subtasks.push(sub);
+    }
+  }
+  return { ok: true, value: out };
+}
+
+function validateXp(raw: unknown, knownSkills: Set<number> | undefined, noun: string): Result<XpGrant[]> {
+  const xpRaw = Array.isArray(raw) ? raw : [];
   const seen = new Set<number>();
+  const out: XpGrant[] = [];
   for (const g of xpRaw as Record<string, unknown>[]) {
     if (!g || !isInt(g.skillId) || !isInt(g.amount)) return { ok: false, error: "Each XP reward needs a skill and a whole number." };
     if (g.amount < 1 || g.amount > 10000) return { ok: false, error: "XP must be between 1 and 10000." };
-    if (seen.has(g.skillId)) return { ok: false, error: "Each skill can only appear once per mission." };
+    if (seen.has(g.skillId)) return { ok: false, error: `Each skill can only appear once per ${noun}.` };
     if (knownSkills && !knownSkills.has(g.skillId)) return { ok: false, error: "That skill doesn't exist any more." };
     seen.add(g.skillId);
-    out.xp.push({ skillId: g.skillId, amount: g.amount });
+    out.push({ skillId: g.skillId, amount: g.amount });
   }
-  if (out.xp.length > MAX_SKILLS_PER_TASK) return { ok: false, error: `A mission can train at most ${MAX_SKILLS_PER_TASK} skills.` };
+  if (out.length > MAX_SKILLS_PER_TASK) return { ok: false, error: `A ${noun} can train at most ${MAX_SKILLS_PER_TASK} skills.` };
   return { ok: true, value: out };
 }

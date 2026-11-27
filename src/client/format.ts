@@ -36,6 +36,10 @@ export function whenLabel(t: Task, now = new Date()): string {
     }
     return parts.join(" · ");
   }
+  if (t.kind === "operation") {
+    const done = t.subtasks.filter((s) => s.done).length;
+    return `${done}/${t.subtasks.length} subtasks`;
+  }
   return "No deadline";
 }
 

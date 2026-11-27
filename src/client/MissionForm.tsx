@@ -1,26 +1,38 @@
 import { useMemo, useState, type FormEvent } from "react";
-import type { Skill, Task, TaskInput, TaskKind } from "../shared/game";
-import { MAX_SKILLS_PER_TASK, minutesBetween, suggestCredits } from "../shared/game";
+import type { Skill, SubtaskInput, Task, TaskInput, TaskKind, XpGrant } from "../shared/game";
+import { MAX_SKILLS_PER_TASK, MAX_SUBTASKS, minutesBetween, suggestBonus, suggestCredits } from "../shared/game";
 import { toLocalInput } from "./format";
 
 interface Props {
   task: Task | null;
   noun: string;
+  /** "Operation" or "Raid", depending on the look. */
+  operationName: string;
   currency: string;
   skills: Skill[];
   onSave: (t: TaskInput) => Promise<void>;
   onCancel: () => void;
 }
 
-const KINDS: [TaskKind, string, string][] = [
+const KINDS: [TaskKind, string | null, string][] = [
   ["duration", "Timed · duration", "Takes a set amount of time"],
   ["window", "Timed · start/end", "Happens at a fixed time"],
   ["daily", "Daily", "Comes back every day"],
   ["weekly", "Weekly", "Comes back every week"],
+  ["operation", null, "Subtasks, plus a bonus for all"],
   ["extra", "Extra", "No hard deadline"],
 ];
 
-export function MissionForm({ task, noun, currency, skills, onSave, onCancel }: Props) {
+interface SubRow {
+  id?: number;
+  title: string;
+  credits: string;
+  /** Picked skills, up to MAX_SKILLS_PER_TASK, each with its XP. */
+  xp: { skillId: number; amount: string }[];
+}
+const blankSub = (): SubRow => ({ title: "", credits: "10", xp: [] });
+
+export function MissionForm({ task, noun, operationName, currency, skills, onSave, onCancel }: Props) {
   const nextHour = useMemo(() => { const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d; }, []);
   const [title, setTitle] = useState(task?.title ?? "");
   const [kind, setKind] = useState<TaskKind>(task?.kind ?? "duration");
@@ -34,11 +46,30 @@ export function MissionForm({ task, noun, currency, skills, onSave, onCancel }: 
     while (rows.length < MAX_SKILLS_PER_TASK) rows.push({ skillId: "", amount: "10" });
     return rows;
   });
+  const [subs, setSubs] = useState<SubRow[]>(() =>
+    task?.subtasks.length
+      ? task.subtasks.map((s) => ({
+          id: s.id,
+          title: s.title,
+          credits: String(s.credits),
+          xp: s.xp.map((g) => ({ skillId: g.skillId, amount: String(g.amount) })),
+        }))
+      : [blankSub(), blankSub()],
+  );
+  const setSub = (i: number, patch: Partial<SubRow>) => setSubs(subs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const toggleSubSkill = (i: number, skillId: number) => {
+    const cur = subs[i]!.xp;
+    if (cur.some((g) => g.skillId === skillId)) setSub(i, { xp: cur.filter((g) => g.skillId !== skillId) });
+    else if (cur.length < MAX_SKILLS_PER_TASK) setSub(i, { xp: [...cur, { skillId, amount: "10" }] });
+  };
+  const setSubXp = (i: number, skillId: number, amount: string) =>
+    setSub(i, { xp: subs[i]!.xp.map((g) => (g.skillId === skillId ? { ...g, amount } : g)) });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const minutes = kind === "duration" || kind === "daily" || kind === "weekly" ? Number(duration) || 0 : kind === "window" ? Math.max(0, minutesBetween(start, end) || 0) : 0;
-  const suggested = suggestCredits(kind, minutes);
+  const op = kind === "operation";
+  const suggested = op ? suggestBonus(subs.map((r) => Number(r.credits))) : suggestCredits(kind, minutes);
   const creditValue = credits ?? String(suggested);
 
   const submit = async (e: FormEvent) => {
@@ -53,7 +84,18 @@ export function MissionForm({ task, noun, currency, skills, onSave, onCancel }: 
       start: kind === "window" ? new Date(start).toISOString() : null,
       end: kind === "window" ? new Date(end).toISOString() : null,
       xp: xp.filter((r) => r.skillId && Number(r.amount) > 0).map((r) => ({ skillId: Number(r.skillId), amount: Math.round(Number(r.amount)) })),
+      subtasks: op
+        ? subs
+            .filter((r) => r.title.trim() !== "")
+            .map((r): SubtaskInput => ({
+              ...(r.id !== undefined ? { id: r.id } : {}),
+              title: r.title.trim(),
+              credits: Math.round(Number(r.credits) || 0),
+              xp: r.xp.filter((g) => Number(g.amount) > 0).map((g): XpGrant => ({ skillId: g.skillId, amount: Math.round(Number(g.amount)) })),
+            }))
+        : [],
     };
+    if (op && input.subtasks!.length === 0) return setError("Add at least one subtask.");
     if (kind === "window" && (isNaN(new Date(start).getTime()) || isNaN(new Date(end).getTime()))) return setError("Pick both a start and an end time.");
     const ids = input.xp.map((g) => g.skillId);
     if (new Set(ids).size !== ids.length) return setError("Each skill can only appear once per mission.");
@@ -75,7 +117,7 @@ export function MissionForm({ task, noun, currency, skills, onSave, onCancel }: 
         {KINDS.map(([k, label, sub]) => (
           <label key={k} className={`kind ${kind === k ? "on" : ""}`}>
             <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} />
-            <span className="kind-label">{label}</span>
+            <span className="kind-label">{label ?? operationName}</span>
             <span className="kind-sub">{sub}</span>
           </label>
         ))}
@@ -112,12 +154,62 @@ export function MissionForm({ task, noun, currency, skills, onSave, onCancel }: 
         </div>
       )}
 
+      {op && (
+        <fieldset className="sub-set">
+          <legend className="label">Subtasks · each pays out when you tick it off</legend>
+          <div className="sub-row sub-head" aria-hidden="true"><span>Subtask</span><span>{currency}</span><span /></div>
+          {subs.map((r, i) => (
+            <div key={r.id ?? `new-${i}`} className="sub-item">
+              <div className="sub-row">
+                <input aria-label={`Subtask ${i + 1}`} maxLength={140} value={r.title} onChange={(e) => setSub(i, { title: e.target.value })} placeholder={`Subtask ${i + 1}`} />
+                <input aria-label={`${currency} for subtask ${i + 1}`} className="sub-num" type="number" min={0} value={r.credits} onChange={(e) => setSub(i, { credits: e.target.value })} title={currency} />
+                <button type="button" className="btn-ghost btn-xs" aria-label={`Remove subtask ${i + 1}`} disabled={subs.length <= 1} onClick={() => setSubs(subs.filter((_, j) => j !== i))}>×</button>
+              </div>
+              {skills.length > 0 && (
+                <div className="sub-skills" role="group" aria-label={`Skills for subtask ${i + 1}, up to ${MAX_SKILLS_PER_TASK}`}>
+                  <span className="label">XP · up to {MAX_SKILLS_PER_TASK}</span>
+                  {skills.map((s) => {
+                    const g = r.xp.find((x) => x.skillId === s.id);
+                    return (
+                      <span key={s.id} className={`sub-skill ${g ? "on" : ""}`}>
+                        <button
+                          type="button"
+                          className="skill-chip"
+                          aria-pressed={Boolean(g)}
+                          disabled={!g && r.xp.length >= MAX_SKILLS_PER_TASK}
+                          onClick={() => toggleSubSkill(i, s.id)}
+                        >
+                          {s.name}
+                        </button>
+                        {g && (
+                          <input
+                            aria-label={`XP for ${s.name} on subtask ${i + 1}`}
+                            className="sub-xp"
+                            type="number"
+                            min={1}
+                            value={g.amount}
+                            onChange={(e) => setSubXp(i, s.id, e.target.value)}
+                          />
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+          {subs.length < MAX_SUBTASKS && (
+            <button type="button" className="link" onClick={() => setSubs([...subs, blankSub()])}>+ Add subtask</button>
+          )}
+        </fieldset>
+      )}
+
       <div className="row">
-        <label className="field"><span className="label">Reward ({currency})</span>
+        <label className="field"><span className="label">{op ? `Completion bonus (${currency})` : `Reward (${currency})`}</span>
           <input id="m-credits" type="number" min={0} required value={creditValue} onChange={(e) => setCredits(e.target.value)} />
         </label>
         <p className="hint field-hint">
-          Suggested: {suggested} {currency}{minutes > 0 ? " (1 per 2 minutes)" : ""}.
+          Suggested: {suggested} {currency}{op ? " (a quarter of the subtasks' total)" : minutes > 0 ? " (1 per 2 minutes)" : ""}.
           {credits !== null && Number(credits) !== suggested && (
             <> <button type="button" className="link" onClick={() => setCredits(null)}>Use suggestion</button></>
           )}
@@ -125,7 +217,7 @@ export function MissionForm({ task, noun, currency, skills, onSave, onCancel }: 
       </div>
 
       <fieldset className="xp-set">
-        <legend className="label">Skill XP · up to {MAX_SKILLS_PER_TASK}</legend>
+        <legend className="label">{op ? "Bonus skill XP" : "Skill XP"} · up to {MAX_SKILLS_PER_TASK}</legend>
         {xp.map((r, i) => (
           <div key={i} className="xp-row">
             <select aria-label={`Skill ${i + 1}`} value={r.skillId} onChange={(e) => setXp(xp.map((x, j) => (j === i ? { ...x, skillId: e.target.value } : x)))}>

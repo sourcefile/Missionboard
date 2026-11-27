@@ -1,7 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { validateTask } from "../shared/game.js";
+import { isOperation, validateTask } from "../shared/game.js";
 import { meetsRank, validateRanks } from "../shared/ranks.js";
 import type { Store } from "./db.js";
 
@@ -41,6 +41,13 @@ export function createApp(store: Store, staticDir?: string) {
   app.post("/api/tasks/:id/reopen", (req, res) => {
     const t = store.task(idOf(req));
     if (!t) return fail(res, 404, "Mission not found.");
+    if (isOperation(t.kind)) {
+      // Reopening a whole operation takes back every subtask payout and the bonus.
+      const plan = store.reopenPlan(t.id);
+      if (store.balance() - plan.credits < 0) return fail(res, 409, "You've already spent these credits, so this operation can't be reopened.");
+      store.removeCompletions(plan.ids);
+      return res.json(store.state());
+    }
     const c = store.currentCompletion(t.id);
     if (c) {
       if (store.balance() - c.credits < 0) return fail(res, 409, "You've already spent these credits, so this mission can't be reopened.");
@@ -48,6 +55,27 @@ export function createApp(store: Store, staticDir?: string) {
     }
     res.json(store.state());
   });
+  // Operation subtasks
+  const subtaskOf = (req: Request) => {
+    const t = store.task(idOf(req));
+    const sid = Number(req.params.sid);
+    return { t, sub: t?.subtasks.find((s) => s.id === sid) };
+  };
+  app.post("/api/tasks/:id/subtasks/:sid/complete", (req, res) => {
+    const { t, sub } = subtaskOf(req);
+    if (!t || !sub) return fail(res, 404, "Subtask not found.");
+    store.completeSubtask(t.id, sub.id); // no-op if already done; pays the bonus when it's the last one
+    res.json(store.state());
+  });
+  app.post("/api/tasks/:id/subtasks/:sid/reopen", (req, res) => {
+    const { t, sub } = subtaskOf(req);
+    if (!t || !sub) return fail(res, 404, "Subtask not found.");
+    const plan = store.reopenPlan(t.id, sub.id); // also takes back the bonus if it was paid
+    if (store.balance() - plan.credits < 0) return fail(res, 409, "You've already spent these credits, so this subtask can't be reopened.");
+    store.removeCompletions(plan.ids);
+    res.json(store.state());
+  });
+
   app.delete("/api/tasks/:id", (req, res) => {
     // Credits and XP already earned stay in the log.
     if (!store.deleteTask(idOf(req))) return fail(res, 404, "Mission not found.");
