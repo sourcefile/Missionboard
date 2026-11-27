@@ -6,6 +6,7 @@ A personal task dashboard with game mechanics. Finish missions to earn **credits
 - Each mission pays out credits and can train **up to 3 skills** with XP.
 - The **leisure shop** lists activities with a credit price. Redeeming one deducts the credits and records it in the credit log.
 - Two looks: **Cyberpunk** and **Fantasy**.
+- **Search and filter:** type in the search box above the missions list to find missions by title, and tap one or more skills to show only missions that give XP to those skills. Both work in every tab, and "Clear filters" resets them.
 
 ## Mission types
 
