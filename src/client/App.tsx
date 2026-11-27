@@ -37,6 +37,8 @@ export function App() {
   const [state, setState] = useState<BoardState | null>(null);
   const [loadError, setLoadError] = useState("");
   const [filter, setFilter] = useState<Filter>(readFilter);
+  const [query, setQuery] = useState("");
+  const [skillFilter, setSkillFilter] = useState<number[]>([]);
   const [skinName, setSkinName] = useState<SkinName>(loadSkin);
   const t = SKINS[skinName];
   const [editing, setEditing] = useState<Task | "new" | null>(null);
@@ -110,6 +112,15 @@ export function App() {
           (filter === "timed" && isTimed(m)) ||
           (filter === "extra" && m.kind === "extra")),
   );
+  // Search and skill filter narrow whichever tab is open.
+  const picked = skillFilter.filter((id) => state.skills.some((s) => s.id === id));
+  const needle = query.trim().toLowerCase();
+  const narrowing = needle !== "" || picked.length > 0;
+  const tabCount = list.length;
+  if (needle) list = list.filter((m) => m.title.toLowerCase().includes(needle));
+  if (picked.length) list = list.filter((m) => m.xp.some((g) => picked.includes(g.skillId)));
+  const clearFinder = () => { setQuery(""); setSkillFilter([]); };
+  const toggleSkill = (id: number) => setSkillFilter((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   list = filter === "done" ? list.sort((a, b) => (b.doneAt ?? "").localeCompare(a.doneAt ?? "")) : list.sort(byTime);
 
   const complete = async (m: Task) => {
@@ -241,6 +252,34 @@ export function App() {
             </div>
           </div>
 
+          <div className="finder" role="search" aria-label={`Find ${t.mission}s`}>
+            <div className="finder-search">
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }}
+                placeholder={`Search ${t.mission}s by title`}
+                aria-label={`Search ${t.mission}s by title`}
+                maxLength={80}
+              />
+            </div>
+            {state.skills.length > 0 && (
+              <div className="finder-skills" role="group" aria-label="Filter by skill">
+                <span className="label">Skill</span>
+                {[...state.skills].sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
+                  <button key={s.id} type="button" className="skill-chip" aria-pressed={picked.includes(s.id)} onClick={() => toggleSkill(s.id)}>{s.name}</button>
+                ))}
+              </div>
+            )}
+            {narrowing && (
+              <div className="finder-status" aria-live="polite">
+                <span>Showing {list.length} of {tabCount}</span>
+                <button type="button" className="link" onClick={clearFinder}>Clear filters</button>
+              </div>
+            )}
+          </div>
+
           {editing && (
             <MissionForm
               task={editing === "new" ? null : editing}
@@ -259,7 +298,14 @@ export function App() {
           )}
 
           <div className="missions">
-            {list.length === 0 ? (
+            {list.length === 0 && narrowing && tabCount > 0 ? (
+              <div className="empty">
+                <strong>No {t.mission}s match</strong>
+                {needle && <>Nothing in this tab has “{query.trim()}” in its title{picked.length ? " and" : "."} </>}
+                {picked.length > 0 && <>{needle ? "gives" : "Nothing in this tab gives"} XP to {picked.map(skillName).join(" or ")}. </>}
+                <button type="button" className="link" onClick={clearFinder}>Clear filters</button>
+              </div>
+            ) : list.length === 0 ? (
               <div className="empty">
                 <strong>{filter === "done" ? `No completed ${t.mission}s yet` : `No active ${t.mission}s here`}</strong>
                 {filter === "done"

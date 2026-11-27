@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { App } from "./App";
 import type { BoardState, Task } from "../shared/game";
 import { DEFAULT_RANKS } from "../shared/ranks";
@@ -12,7 +12,7 @@ const state: BoardState = {
   balance: 40,
   weekStart: 1,
   ranks: DEFAULT_RANKS.map((r, i) => ({ ...r, id: i + 1, position: i })),
-  skills: [{ id: 1, name: "Focus" }],
+  skills: [{ id: 1, name: "Focus" }, { id: 2, name: "Fitness" }],
   skillXp: { 1: 120 },
   rewards: [{ id: 1, name: "30 min of gaming", cost: 30, minRankId: null }, { id: 2, name: "Night out", cost: 200, minRankId: null }, { id: 3, name: "Weekend trip", cost: 20, minRankId: 3 }],
   spends: [],
@@ -20,7 +20,7 @@ const state: BoardState = {
   tasks: [
     task({ id: 1, title: "Write report", kind: "duration", credits: 25, durationMin: 50, xp: [{ skillId: 1, amount: 40 }] }),
     task({ id: 2, title: "Tidy desk", kind: "extra", credits: 10 }),
-    task({ id: 3, title: "Stretch", kind: "daily", credits: 5, streak: 4 }),
+    task({ id: 3, title: "Stretch", kind: "daily", credits: 5, streak: 4, xp: [{ skillId: 2, amount: 10 }] }),
   ],
 };
 
@@ -73,6 +73,35 @@ describe("dashboard", () => {
     expect(screen.getAllByRole("group", { name: /Rank \d/ })).toHaveLength(4);
     fireEvent.click(screen.getByRole("button", { name: "+ Add rank" }));
     expect(screen.getAllByRole("group", { name: /Rank \d/ })).toHaveLength(5);
+  });
+
+  it("searches missions by title and filters them by skill", async () => {
+    serve();
+    render(<App />);
+    await screen.findByText("Write report");
+    const search = screen.getByRole("searchbox", { name: "Search missions by title" });
+    fireEvent.change(search, { target: { value: "REP" } });
+    expect(screen.getByText("Write report")).toBeTruthy();
+    expect(screen.queryByText("Tidy desk")).toBeNull();
+    expect(screen.getByText("Showing 1 of 3")).toBeTruthy();
+    fireEvent.change(search, { target: { value: "" } });
+
+    const skills = screen.getByRole("group", { name: "Filter by skill" });
+    const fitness = within(skills).getByRole("button", { name: "Fitness" });
+    fireEvent.click(fitness);
+    expect(fitness.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Stretch")).toBeTruthy();
+    expect(screen.queryByText("Write report")).toBeNull();
+    fireEvent.click(within(skills).getByRole("button", { name: "Focus" }));
+    expect(screen.getByText("Write report")).toBeTruthy();
+    expect(screen.getByText("Showing 2 of 3")).toBeTruthy();
+
+    fireEvent.change(search, { target: { value: "nothing like this" } });
+    expect(screen.getByText("No missions match")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear filters" })[0]!);
+    expect(screen.getByText("Tidy desk")).toBeTruthy();
+    expect((search as HTMLInputElement).value).toBe("");
+    expect(fitness.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("explains when the server can't be reached", async () => {
